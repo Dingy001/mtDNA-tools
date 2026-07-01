@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>mtDNA Round Tree — Clip/Rollback Visualization</title>
+    <link rel="stylesheet" href="css/style.css">
+
+    <!-- D3.js v7 -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <!-- igv.js v3 -->
+    <script src="https://cdn.jsdelivr.net/npm/igv@3.1.0/dist/igv.min.js"></script>
+</head>
+<body>
+
+    <!-- ========== Legend ========== -->
+    <div id="legend">
+        <span class="legend-item">
+            <span class="legend-dot" style="background:#2563eb"></span> ACTIVE
+        </span>
+        <span class="legend-item">
+            <span class="legend-dot dashed"></span> Clip / Rollback Attempt
+        </span>
+        <span class="legend-item">
+            <span class="legend-dot" style="background:#dc2626"></span> STOP
+        </span>
+        <span class="legend-item">
+            <span class="legend-line"></span> Normal extension
+        </span>
+        <span class="legend-item">
+            <span class="legend-line dashed"></span> Rollback
+        </span>
+        <span class="legend-item">
+            <span class="legend-line" style="border-color:#2563eb"></span> Spawn branch
+        </span>
+    </div>
+
+    <!-- ========== Toolbar ========== -->
+    <div id="toolbar">
+        <div class="toolbar-left">
+            <select id="path-filter">
+                <option value="">-- All Paths --</option>
+            </select>
+            <div id="round-filter">
+                <button id="btn-rounds-all" class="btn-sm">All Rounds</button>
+                <button id="btn-rounds-clear" class="btn-sm">Clear</button>
+                <div id="round-checkboxes"></div>
+            </div>
+            <input type="text" id="node-search" placeholder="Search node...">
+        </div>
+        <div class="toolbar-center">
+            <button id="btn-zoom-in" title="Zoom in">+</button>
+            <button id="btn-zoom-out" title="Zoom out">&minus;</button>
+            <button id="btn-fit" title="Fit to viewport">Fit</button>
+            <button id="btn-reset" title="Reset view">Reset</button>
+        </div>
+        <div class="toolbar-right">
+            <button id="btn-toggle-igv" title="Toggle IGV panel">IGV</button>
+            <button id="btn-export-svg">SVG</button>
+            <button id="btn-export-png">PNG</button>
+            <span id="info-bar">Loading...</span>
+        </div>
+    </div>
+
+    <!-- ========== Main area ========== -->
+    <div id="main-area">
+        <!-- Tree SVG -->
+        <div id="tree-container">
+            <svg id="tree-svg">
+                <defs>
+                    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                        <feGaussianBlur id="glow-blur" stdDeviation="3" result="blur"/>
+                        <feFlood id="glow-color" flood-color="#3b82f6" flood-opacity="0.5"/>
+                        <feComposite in2="blur" operator="in"/>
+                        <feMerge>
+                            <feMergeNode/>
+                            <feMergeNode in="SourceGraphic"/>
+                        </feMerge>
+                    </filter>
+                    <filter id="glow-edge" x="-50%" y="-50%" width="200%" height="200%">
+                        <feGaussianBlur stdDeviation="3.5" result="blur"/>
+                        <feFlood flood-color="#2563eb" flood-opacity="0.6"/>
+                        <feComposite in2="blur" operator="in"/>
+                        <feMerge>
+                            <feMergeNode/>
+                            <feMergeNode in="SourceGraphic"/>
+                        </feMerge>
+                    </filter>
+                </defs>
+                <g id="link-group"></g>
+                <g id="node-group"></g>
+            </svg>
+        </div>
+
+        <!-- Detail panel (slides out from right) -->
+        <div id="detail-overlay"></div>
+        <div id="detail-panel">
+            <div id="detail-header">
+                <h3 id="detail-title">Node Detail</h3>
+                <button id="detail-close">&times;</button>
+            </div>
+            <div id="detail-content"></div>
+        </div>
+    </div>
+
+    <!-- ========== Resizer ========== -->
+    <div id="resizer"></div>
+
+    <!-- ========== IGV Panel ========== -->
+    <div id="igv-panel" class="collapsed">
+        <div id="igv-header">
+            <span id="igv-title">IGV Viewer</span>
+            <span id="igv-status" style="font-size:12px;color:#9ca3af;"></span>
+            <button id="igv-close">&times;</button>
+        </div>
+        <div id="igv-container"></div>
+    </div>
+
+    <!-- ========== JS modules (dependency order) ========== -->
+    <script src="js/config.js"></script>
+    <script src="js/data-loader.js"></script>
+    <script src="js/layout.js"></script>
+    <script src="js/render.js"></script>
+    <script src="js/interaction.js"></script>
+    <script src="js/detail-panel.js"></script>
+    <script src="js/toolbar.js"></script>
+    <script src="js/igv-controller.js"></script>
+    <script src="js/export.js"></script>
+    <script src="js/app.js"></script>
+
+    <script>
+        // Launch application
+        document.addEventListener('DOMContentLoaded', () => {
+            window.app = new App();
+            window.app.init().catch(err => {
+                console.error(err);
+                document.getElementById('info-bar').textContent = 'Init error: ' + err.message;
+            });
+        });
+    </script>
+</body>
+</html>

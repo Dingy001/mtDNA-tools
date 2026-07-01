@@ -1,0 +1,13 @@
+# Exclude large BAM/FA data files
+MH63_auto/
+
+# Backup files
+*.codexbak
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
