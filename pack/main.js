@@ -20,42 +20,96 @@ let resourceRoot = process.resourcesPath || staticRoot;
 
 const configDir = app.getPath('userData');
 const configFile = path.join(configDir, 'data-dir.txt');
+const portableConfigFile = path.join(path.dirname(process.execPath || staticRoot), 'data-dir.json');
+const devPortableConfigFile = path.join(staticRoot, 'data-dir.json');
 
-function hasDataRoot(dir) {
+function isRunDir(dir) {
     try {
-        return !!dir && (
-            fs.existsSync(path.join(dir, 'tree_data.json')) ||
-            fs.existsSync(path.join(dir, 'MH63_auto')) ||
-            fs.existsSync(path.join(dir, 'auto_multipath_roundtree_run'))
-        );
+        if (!dir) return false;
+        const hasPackagedRun = fs.existsSync(path.join(dir, 'MH63_auto', 'auto_multipath_roundtree_run'));
+        const hasMh63Run = fs.existsSync(path.join(dir, 'auto_multipath_roundtree_run'));
+        const hasDirectRun = fs.existsSync(path.join(dir, 'final_path')) || fs.existsSync(path.join(dir, 'paths'));
+        return hasPackagedRun || hasMh63Run || hasDirectRun;
     } catch (_) {
         return false;
     }
 }
 
+function findRunDir(dir) {
+    if (!dir) return '';
+    const candidates = [
+        dir,
+        path.join(dir, 'MH63_auto', 'auto_multipath_roundtree_run'),
+        path.join(dir, 'auto_multipath_roundtree_run'),
+    ];
+    for (const candidate of candidates) {
+        if (isRunDir(candidate)) return candidate;
+    }
+    return '';
+}
+
+function hasDataRoot(dir) {
+    return !!findRunDir(dir);
+}
+
+function readPortableDataDir(filePath) {
+    try {
+        if (!fs.existsSync(filePath)) return '';
+        const raw = fs.readFileSync(filePath, 'utf-8').trim();
+        if (!raw) return '';
+        const parsed = JSON.parse(raw);
+        const configured = typeof parsed === 'string' ? parsed : parsed.dataDir;
+        if (!configured) return '';
+        const resolved = path.isAbsolute(configured)
+            ? configured
+            : path.resolve(path.dirname(filePath), configured);
+        return findRunDir(resolved);
+    } catch (_) {
+        return '';
+    }
+}
+
 function loadDataDir() {
+    const portable = readPortableDataDir(portableConfigFile) || readPortableDataDir(devPortableConfigFile);
+    if (portable) return portable;
+
     try {
         const saved = fs.readFileSync(configFile, 'utf-8').trim();
-        if (hasDataRoot(saved)) return saved;
+        const savedRunDir = findRunDir(saved);
+        if (savedRunDir) return savedRunDir;
     } catch (_) { /* ignore */ }
 
+    const exeDir = path.dirname(process.execPath || '');
     const candidates = [
+        path.join(exeDir, 'MH63_auto', 'auto_multipath_roundtree_run'),
+        path.join(exeDir, 'auto_multipath_roundtree_run'),
+        exeDir,
         resourceRoot,
-        path.dirname(process.execPath || ''),
         staticRoot,
         path.dirname(staticRoot),
     ];
     for (const candidate of candidates) {
-        if (hasDataRoot(candidate)) return candidate;
+        const runDir = findRunDir(candidate);
+        if (runDir) return runDir;
     }
     return '';
 }
 
 function saveDataDir(dir) {
+    const runDir = findRunDir(dir) || dir;
     try {
         fs.mkdirSync(configDir, { recursive: true });
-        fs.writeFileSync(configFile, dir, 'utf-8');
+        fs.writeFileSync(configFile, runDir, 'utf-8');
     } catch (_) { /* ignore */ }
+
+    try {
+        const exeDir = path.dirname(process.execPath || staticRoot);
+        const relative = path.relative(exeDir, runDir);
+        const portableValue = relative && !relative.startsWith('..') && !path.isAbsolute(relative)
+            ? relative.replace(/\\/g, '/')
+            : runDir;
+        fs.writeFileSync(portableConfigFile, JSON.stringify({ dataDir: portableValue }, null, 2), 'utf-8');
+    } catch (_) { /* portable config may be unwritable under Program Files */ }
 }
 
 const MIME = {
@@ -78,37 +132,58 @@ function extToMime(p) {
     return MIME[path.extname(p).toLowerCase()] || 'application/octet-stream';
 }
 
-function resolveFile(reqPath) {
-    const candidates = [];
-    const decoded = decodeURIComponent(reqPath || '/');
-    const relPath = decoded.replace(/^[\\/]+/, '');
-
-    const pushCandidate = (root, rel) => {
-        if (!root || !rel) return;
-        candidates.push(path.join(root, rel));
+function dataRoots() {
+    const roots = [];
+    const addRoot = (root) => {
+        if (!root) return;
+        const normalized = path.resolve(root);
+        if (!roots.includes(normalized)) roots.push(normalized);
     };
 
-    if (dataDir) {
-        pushCandidate(dataDir, relPath);
+    addRoot(findRunDir(dataDir) || dataDir);
+    addRoot(staticRoot);
+    addRoot(resourceRoot);
+    addRoot(path.dirname(process.execPath || ''));
+    return roots;
+}
 
-        const mh63Prefix = 'MH63_auto/';
-        const runPrefix = 'MH63_auto/auto_multipath_roundtree_run/';
-        const normalizedRel = relPath.replace(/\\/g, '/');
+function candidatePathsForRoot(root, relPath) {
+    const normalizedRel = relPath.replace(/\\/g, '/');
+    const candidates = [path.join(root, relPath)];
+    const runPrefix = 'MH63_auto/auto_multipath_roundtree_run/';
+    const mh63Prefix = 'MH63_auto/';
+
+    if (normalizedRel.startsWith(runPrefix)) {
+        candidates.push(path.join(root, normalizedRel.slice(runPrefix.length)));
+    }
+    if (normalizedRel.startsWith(mh63Prefix)) {
+        candidates.push(path.join(root, normalizedRel.slice(mh63Prefix.length)));
+    }
+
+    const runDir = findRunDir(root);
+    if (runDir && runDir !== root) {
+        candidates.push(path.join(runDir, relPath));
         if (normalizedRel.startsWith(runPrefix)) {
-            // Supports selecting .../MH63_auto/auto_multipath_roundtree_run directly.
-            pushCandidate(dataDir, normalizedRel.slice(runPrefix.length));
+            candidates.push(path.join(runDir, normalizedRel.slice(runPrefix.length)));
         }
         if (normalizedRel.startsWith(mh63Prefix)) {
-            // Supports selecting .../MH63_auto directly.
-            pushCandidate(dataDir, normalizedRel.slice(mh63Prefix.length));
+            candidates.push(path.join(runDir, normalizedRel.slice(mh63Prefix.length)));
         }
     }
 
-    pushCandidate(staticRoot, relPath);
-    pushCandidate(resourceRoot, relPath);
-    pushCandidate(path.dirname(process.execPath || ''), relPath);
+    return candidates;
+}
 
-        const fallbackCandidates = [];
+function resolveFile(reqPath) {
+    const decoded = decodeURIComponent(reqPath || '/');
+    const relPath = decoded.replace(/^[\\/]+/, '') || 'index.html';
+    const candidates = [];
+
+    for (const root of dataRoots()) {
+        candidates.push(...candidatePathsForRoot(root, relPath));
+    }
+
+    const fallbackCandidates = [];
     for (const fp of candidates) {
         fallbackCandidates.push(fp);
         if (/\.bam$/i.test(fp)) fallbackCandidates.push(fp.replace(/\.bam$/i, '.cram'));
@@ -213,18 +288,29 @@ function createServer() {
 }
 
 async function selectDataDir() {
-    const result = await dialog.showOpenDialog(mainWindow, {
+    const result = await dialog.showOpenDialog(mainWindow || undefined, {
         title: 'Select Data Directory',
         properties: ['openDirectory'],
-        message: 'Select the mtDNA data root folder\n(containing tree_data.json, MH63_auto/, etc.)',
+        message: 'Select the mtDNA data root folder\n(containing auto_multipath_roundtree_run/tree_data.json)'
     });
     if (!result.canceled && result.filePaths.length > 0) {
-        dataDir = result.filePaths[0];
+        const selectedRunDir = findRunDir(result.filePaths[0]);
+        if (!selectedRunDir) {
+            await dialog.showMessageBox(mainWindow || undefined, {
+                type: 'error',
+                title: 'Invalid Data Directory',
+                message: 'This folder does not look like an mtDNA data/application folder.',
+                detail: 'Please select the application folder, the MH63_auto folder, or auto_multipath_roundtree_run itself.'
+            });
+            return dataDir;
+        }
+        dataDir = selectedRunDir;
         saveDataDir(dataDir);
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.reload();
         }
     }
+    return dataDir;
 }
 
 function createWindow(port) {
@@ -283,6 +369,9 @@ function createWindow(port) {
 
 app.whenReady().then(async () => {
     dataDir = loadDataDir();
+    if (!dataDir) {
+        await selectDataDir();
+    }
     const { port } = await createServer();
     httpPort = port;
     createWindow(port);
@@ -304,6 +393,9 @@ ipcMain.handle('select-data-dir', async () => {
 });
 ipcMain.handle('get-data-dir', () => dataDir);
 ipcMain.handle('get-http-port', () => httpPort);
+
+
+
 
 
 
