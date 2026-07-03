@@ -106,6 +106,36 @@ const DetailPanel = {
         }
         html += `</table></div>`;
 
+        const finalPathsThroughNode = this._data._nodeFinalPathsById ? this._data._nodeFinalPathsById.get(node.id) : null;
+        if (finalPathsThroughNode && finalPathsThroughNode.length > 0) {
+            html += `<div class="detail-section">
+                <div class="detail-section-title">Final Path Mapping</div>
+                <table class="kv-table">
+                <tr><td class="kv-key">Path Count</td><td class="kv-val">${finalPathsThroughNode.length}</td></tr>
+                <tr><td class="kv-key">Final Paths</td><td class="kv-val">${this._esc(finalPathsThroughNode.join(', '))}</td></tr>
+                </table></div>`;
+        }
+
+        const interval = node.round_node_interval || (this._data._roundNodeIntervalById ? this._data._roundNodeIntervalById.get(node.id) : null);
+        if (interval) {
+            const intervalFields = [
+                ['Node Coordinates', `1-${interval.node_ref_len}`],
+                ['Node Ref Length', interval.node_ref_len],
+                ['Round Ref', interval.round_ref_fa_url || interval.round_ref_fa],
+                ['Node Alignment', interval.node_cram_url || interval.node_bam_url],
+                ['Shared By Paths', `${interval.num_final_paths || 0} final path(s)`],
+                ['Final Paths', Array.isArray(interval.final_paths) ? interval.final_paths.join(', ') : interval.final_paths],
+            ];
+            html += `<div class="detail-section">
+                <div class="detail-section-title">Round Node Coverage Index</div>
+                <table class="kv-table">`;
+            for (const [k, v] of intervalFields) {
+                const val = (v === undefined || v === null || v === '' || v === 'NA') ? '-' : String(v);
+                html += `<tr><td class="kv-key">${this._esc(k)}</td><td class="kv-val">${this._esc(val)}</td></tr>`;
+            }
+            html += `</table></div>`;
+        }
+
         // Candidates table (for rollback nodes)
         if (Array.isArray(node.candidates) && node.candidates.length > 0) {
             html += `<div class="detail-section">
@@ -136,6 +166,9 @@ const DetailPanel = {
         } else {
             html += `<button class="btn btn-igv" data-action="igv-node" data-node-id="${this._esc(node.id)}">View this round in IGV</button>`;
         }
+        if (!isRollback && (node.round_node_interval || (this._data._roundNodeIntervalById && this._data._roundNodeIntervalById.has(node.id)))) {
+            html += `<button class="btn btn-igv" data-action="igv-node-coverage" data-node-id="${this._esc(node.id)}">View node coverage in IGV (1-node end)</button>`;
+        }
         html += `<button class="btn btn-igv" data-action="highlight-node" data-node-id="${this._esc(node.id)}">Highlight & center node</button>`;
         html += `</div></div>`;
 
@@ -147,6 +180,7 @@ const DetailPanel = {
                 const action = btn.dataset.action;
                 const nid = btn.dataset.nodeId;
                 if (action === 'igv-node' && typeof onIgvNodeView === 'function') onIgvNodeView(nid);
+                if (action === 'igv-node-coverage' && typeof onIgvNodeCoverageView === 'function') onIgvNodeCoverageView(nid);
                 if (action === 'igv-clip' && typeof onIgvClipView === 'function') onIgvClipView(nid);
                 if (action === 'highlight-node' && typeof onHighlightNode === 'function') onHighlightNode(nid);
             });
@@ -187,5 +221,9 @@ const DetailPanel = {
         return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     },
 };
+
+
+
+
 
 

@@ -62,6 +62,10 @@ function onIgvNodeView(nodeId) {
     IgvController.showNodeView(nodeId);
 }
 
+function onIgvNodeCoverageView(nodeId) {
+    IgvController.showNodeCoverageView(nodeId);
+}
+
 function onIgvClipView(nodeId) {
     IgvController.showClipView(nodeId);
 }
@@ -95,38 +99,54 @@ function clearHighlight() {
     _highlightedNodes.clear();
     _highlightedPathNodes.clear();
     _highlightedPathEdges.clear();
+    _highlightedPathOverlayLinks = [];
     _applyNodeStyles();
 }
 
 function applyPathHighlight(pathId) {
     _highlightedPathNodes.clear();
     _highlightedPathEdges.clear();
-    if (!pathId || !appData.final_paths_igv) {
-        _applyNodeStyles();
-        return;
-    }
-    const fpData = appData.final_paths_igv.find(p => p.final_path === pathId);
-    if (!fpData) {
+    _highlightedPathOverlayLinks = [];
+    if (!pathId) {
         _applyNodeStyles();
         return;
     }
 
-    const pathNodeIds = fpData.rounds
-        .map(r => r.node_id)
-        .filter(Boolean);
-
-    for (const nodeId of pathNodeIds) {
-        _highlightedPathNodes.add(nodeId);
+    const pathNodeIds = _pathNodeSequenceForHighlight(pathId);
+    if (!pathNodeIds || pathNodeIds.length === 0) {
+        _applyNodeStyles();
+        return;
     }
+
+    pathNodeIds.forEach(nodeId => _highlightedPathNodes.add(nodeId));
 
     for (let i = 0; i < pathNodeIds.length - 1; i++) {
-        const segment = _findTreePath(pathNodeIds[i], pathNodeIds[i + 1]);
-        _addPathSegmentHighlight(segment);
+        const sourceId = pathNodeIds[i];
+        const targetId = pathNodeIds[i + 1];
+        _highlightedPathEdges.add(sourceId + '__TO__' + targetId);
+        _addPathOverlayLink(sourceId, targetId, i);
     }
 
     _applyNodeStyles();
 }
 
+function _pathNodeSequenceForHighlight(pathId) {
+    const mapping = Array.isArray(appData.final_path_node_mappings)
+        ? appData.final_path_node_mappings.find(p => p.final_path === pathId)
+        : null;
+    if (mapping) {
+        const rawNodeIds = Array.isArray(mapping.raw_node_ids) ? mapping.raw_node_ids.filter(Boolean) : [];
+        if (rawNodeIds.length > 0) return rawNodeIds;
+        const nodeIds = Array.isArray(mapping.node_ids) ? mapping.node_ids.filter(Boolean) : [];
+        if (nodeIds.length > 0) return nodeIds;
+    }
+
+    const mappedNodeIds = appData._finalPathNodeIdsById ? appData._finalPathNodeIdsById.get(pathId) : null;
+    if (mappedNodeIds && mappedNodeIds.length > 0) return mappedNodeIds;
+
+    const fpData = appData.final_paths_igv ? appData.final_paths_igv.find(p => p.final_path === pathId) : null;
+    return fpData ? fpData.rounds.map(r => r.node_id).filter(Boolean) : [];
+}
 function _addPathSegmentHighlight(segment) {
     if (!segment || segment.length === 0) return;
     for (const nodeId of segment) {
@@ -138,13 +158,10 @@ function _addPathSegmentHighlight(segment) {
 }
 
 function _addPathOverlayLink(sourceId, targetId, index) {
-    const source = findTreeNode(appData.tree, sourceId);
-    const target = findTreeNode(appData.tree, targetId);
-    if (!source || !target) return;
     _highlightedPathOverlayLinks.push({
         id: sourceId + '__PATH_OVERLAY__' + targetId + '__' + index,
-        source,
-        target,
+        sourceId,
+        targetId,
     });
 }
 
@@ -162,19 +179,30 @@ function _renderPathHighlightOverlay(svg) {
             update => update,
             exit => exit.remove()
         )
-        .attr('d', d => _pathOverlayCurve(d.source, d.target))
+        .attr('d', d => _pathOverlayCurveById(d.sourceId, d.targetId))
         .attr('fill', 'none')
         .attr('stroke', '#2563eb')
         .attr('stroke-width', 8.0)
         .attr('stroke-linecap', 'round')
         .attr('stroke-linejoin', 'round')
-        .attr('opacity', 1)
+        .attr('opacity', d => _pathOverlayCurveById(d.sourceId, d.targetId) ? 1 : 0)
         .attr('filter', 'url(#glow-edge)')
         .attr('pointer-events', 'none');
 
     svg.select('#node-group').raise();
 }
 
+function _pathOverlayCurveById(sourceId, targetId) {
+    const source = _renderedNodePosition(sourceId) || findTreeNode(appData.tree, sourceId);
+    const target = _renderedNodePosition(targetId) || findTreeNode(appData.tree, targetId);
+    if (!source || !target) return '';
+    return _pathOverlayCurve(source, target);
+}
+
+function _renderedNodePosition(nodeId) {
+    const node = d3.selectAll('g.node').filter(d => d && d.id === nodeId).datum();
+    return node ? { x: node.x, y: node.y, id: node.id } : null;
+}
 function _pathOverlayCurve(source, target) {
     const radius = CONFIG.layout.nodeRadius || 10;
     const sx = source.x + radius;
@@ -364,6 +392,10 @@ class App {
         }
     }
 }
+
+
+
+
 
 
 

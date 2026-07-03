@@ -1,12 +1,34 @@
-# Exclude large BAM/FA data files
+# Data directory (user provides separately)
 MH63_auto/
+pack/MH63_auto/
+pack/MH63_auto_bam_backup/
+pack/data/
+
+# Build output
+pack/dist/
+
+# Dependencies
+node_modules/
+pack/node_modules/
+package-lock.json
+pack/package-lock.json
 
 # Backup files
-*.codexbak
+**/*.bak
+**/*fixbak
+**/*igvpackbak
+**/*rangefixbak
+**/*separate-data-bak
+**/*node-interval-bak
+**/*node-cram-bak
+**/*local-vendor-bak
+**/*no-locus-bak
+**/*locusfixbak
 
 # OS files
 .DS_Store
 Thumbs.db
+*.codexbak
 
 # IDE
 .vscode/

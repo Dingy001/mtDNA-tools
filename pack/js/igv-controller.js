@@ -9,6 +9,13 @@
 function igvAvailable() {
     return typeof igv !== 'undefined' && typeof igv.createBrowser === 'function';
 }
+function alignmentFormat(pathValue) {
+    return String(pathValue || '').toLowerCase().endsWith('.cram') ? 'cram' : 'bam';
+}
+
+function defaultAlignmentIndex(pathValue) {
+    return alignmentFormat(pathValue) === 'cram' ? pathValue + '.crai' : pathValue + '.bai';
+}
 
 const IgvController = {
     _container: null,
@@ -18,6 +25,9 @@ const IgvController = {
     _state: null,
     _loadSerial: 0,
     _loadQueue: Promise.resolve(),
+    _rangeGuardTimer: null,
+    _rangeGuardBounds: null,
+    _rangeGuardBusy: false,
 
     /**
      * Initialize the IGV controller (call once after data is loaded).
@@ -84,9 +94,61 @@ const IgvController = {
         if (!igvAvailable()) return;
 
         const requestId = ++this._loadSerial;
-
         const el = document.getElementById('igv-status');
         if (el) el.textContent = 'Loading...';
+
+        const finalPathFile = this._data._finalPathFileById ? this._data._finalPathFileById.get(finalPathId) : null;
+        if (finalPathFile) {
+            const refUrl = CONFIG.httpBase + '/' + finalPathFile.ref_fa_url;
+            const idxUrl = refUrl + '.fai';
+            const refOk = await this._urlExists(refUrl);
+            const idxOk = await this._urlExists(idxUrl);
+            if (!refOk || !idxOk) {
+                if (el) el.textContent = `Missing final_path reference files: ${finalPathFile.ref_fa_url}`;
+                this._updateTitle('Path: ' + finalPathId + ' (final_path files missing)');
+                return;
+            }
+
+            const cramPath = finalPathFile.bam_url ? finalPathFile.bam_url.replace(/\.bam$/i, '.cram') : '';
+            const cramIndexPath = cramPath ? cramPath + '.crai' : '';
+            const alignment = await this._resolveAlignmentResource([
+                { path: cramPath, indexPath: cramIndexPath },
+                { path: finalPathFile.bam_url, indexPath: finalPathFile.bam_index_url },
+            ]);
+            if (!alignment) {
+                if (el) el.textContent = `Missing final_path alignment files: ${finalPathFile.bam_url}`;
+                this._updateTitle('Path: ' + finalPathId + ' (final_path alignment missing)');
+                return;
+            }
+
+            const titleRound = finalPathFile.end_round ? 'round ' + finalPathFile.end_round : 'final round';
+            const title = 'Path: ' + finalPathId + ' (final_path ' + titleRound + ')';
+            this._currentView = { type: 'path', id: finalPathId };
+            this._updateTitle(title);
+
+            const options = {
+                genome: 'mtDNA_' + finalPathId,
+                reference: {
+                    id: 'mtDNA_' + finalPathId,
+                    fastaURL: refUrl,
+                    indexURL: idxUrl,
+                },
+                tracks: [{
+                    name: finalPathId + ' — final_path support reads (' + titleRound + ')',
+                    url: alignment.url,
+                    indexURL: alignment.indexURL,
+                    format: alignment.format,
+                    type: 'alignment',
+                    height: this._alignmentTrackHeight(),
+                    showSoftClips: true,
+                }],
+                showRuler: true,
+            };
+
+            await this._loadLatest(options, requestId);
+            if (requestId === this._loadSerial && el) el.textContent = '';
+            return;
+        }
 
         const fpData = (this._data.final_paths_igv || []).find(p => p.final_path === finalPathId);
         if (!fpData || fpData.rounds.length === 0) {
@@ -95,7 +157,6 @@ const IgvController = {
             return;
         }
 
-        // Use the LAST round with a valid BAM
         let lastRound = null;
         for (let i = fpData.rounds.length - 1; i >= 0; i--) {
             if (fpData.rounds[i].bam_url && fpData.rounds[i].ref_fa_url) {
@@ -111,8 +172,14 @@ const IgvController = {
 
         const refUrl = CONFIG.httpBase + '/' + lastRound.ref_fa_url;
         const idxUrl = refUrl + '.fai';
-        const bamUrl = CONFIG.httpBase + '/' + lastRound.bam_url;
-        const baiUrl = CONFIG.httpBase + '/' + lastRound.bam_index_url;
+        const alnIndexPath = lastRound.bam_index_url || defaultAlignmentIndex(lastRound.bam_url);
+        const alignment = await this._resolveAlignmentResource([
+            { path: lastRound.bam_url, indexPath: alnIndexPath },
+        ]);
+        if (!alignment) {
+            if (el) el.textContent = `Missing round alignment files: ${lastRound.bam_url}`;
+            return;
+        }
         const title = 'Path: ' + finalPathId + ' (cumulative BAM at round ' + lastRound.round + ')';
 
         this._currentView = { type: 'path', id: finalPathId };
@@ -127,9 +194,9 @@ const IgvController = {
             },
             tracks: [{
                 name: finalPathId + ' — cumulative support reads (round ' + lastRound.round + ')',
-                url: bamUrl,
-                indexURL: baiUrl,
-                format: 'bam',
+                url: alignment.url,
+                indexURL: alignment.indexURL,
+                format: alignment.format,
                 type: 'alignment',
                 height: this._alignmentTrackHeight(),
                 showSoftClips: true,
@@ -139,8 +206,95 @@ const IgvController = {
 
         await this._loadLatest(options, requestId);
         if (requestId === this._loadSerial && el) el.textContent = '';
-    },
-    /* ────── node candidate view ────── */
+    },    async showNodeCoverageView(nodeId) {
+        if (!igvAvailable()) return;
+
+        const el = document.getElementById('igv-status');
+        if (el) el.textContent = 'Loading...';
+
+        const node = this._data._nodeById.get(nodeId);
+        const interval = this._data._roundNodeIntervalById ? this._data._roundNodeIntervalById.get(nodeId) : null;
+        if (!node || !interval) {
+            if (el) el.textContent = 'No round-node interval index for this node';
+            return;
+        }
+
+        const label = node.label || node.id;
+        const currentPathId = this._state ? this._state.selectedPathId : null;
+        const pathsThroughNode = this._data._nodeFinalPathsById ? (this._data._nodeFinalPathsById.get(nodeId) || []) : [];
+        const chosenFinalPathId = currentPathId && pathsThroughNode.includes(currentPathId)
+            ? currentPathId
+            : (interval.representative_final_path || pathsThroughNode[0] || null);
+        const finalPathFile = chosenFinalPathId && this._data._finalPathFileById
+            ? this._data._finalPathFileById.get(chosenFinalPathId)
+            : null;
+
+        const finalRefPath = finalPathFile?.ref_fa_url || interval.representative_final_ref_fa_url;
+        const finalBamPath = finalPathFile?.bam_url || interval.representative_final_bam_url;
+        const finalBamIndexPath = finalPathFile?.bam_index_url || interval.representative_final_bai_url || (finalBamPath ? defaultAlignmentIndex(finalBamPath) : '');
+        const finalCramPath = finalBamPath ? finalBamPath.replace(/\.bam$/i, '.cram') : '';
+        const finalCramIndexPath = finalCramPath ? finalCramPath + '.crai' : '';
+        const end = Number(interval.final_ref_end_1based || interval.node_ref_len || node.ref_len || 0);
+        const coordText = `1-${end || 'end'}`;
+        const finalPathLabel = chosenFinalPathId || interval.representative_final_path || 'representative final path';
+
+        if (!finalRefPath || !finalBamPath) {
+            if (el) el.textContent = 'Missing final path ref/BAM in node interval index';
+            return;
+        }
+
+        const refUrl = CONFIG.httpBase + '/' + finalRefPath;
+        const refIndexUrl = refUrl + '.fai';
+        const refOk = await this._urlExists(refUrl);
+        const refIndexOk = await this._urlExists(refIndexUrl);
+        if (!refOk || !refIndexOk) {
+            if (el) el.textContent = `Missing final path reference files: ${finalRefPath}`;
+            this._updateTitle(`Node: ${label} coverage on ${finalPathLabel} (${coordText})`);
+            return;
+        }
+
+        const alignment = await this._resolveAlignmentResource([
+            { path: finalCramPath, indexPath: finalCramIndexPath },
+            { path: finalBamPath, indexPath: finalBamIndexPath },
+        ]);
+        if (!alignment) {
+            if (el) el.textContent = `Missing final path alignment files: ${finalBamPath}`;
+            this._updateTitle(`Node: ${label} coverage on ${finalPathLabel} (${coordText})`);
+            return;
+        }
+
+        const contig = await this._fetchFirstContig(refIndexUrl);
+        const locus = contig && end ? `${contig}:1-${end}` : undefined;
+        const title = `Node: ${label} cumulative coverage on ${finalPathLabel} (${coordText})`;
+        this._currentView = { type: 'node-coverage', id: nodeId };
+        this._updateTitle(title);
+
+        const options = {
+            genome: 'mtDNA_node_coverage_' + nodeId + '_' + finalPathLabel,
+            reference: {
+                id: 'mtDNA_node_coverage_' + nodeId + '_' + finalPathLabel,
+                fastaURL: refUrl,
+                indexURL: refIndexUrl,
+            },
+            tracks: [{
+                name: `${label} — cumulative reads on ${finalPathLabel} (${coordText})`,
+                url: alignment.url,
+                indexURL: alignment.indexURL,
+                format: alignment.format,
+                type: 'alignment',
+                height: this._alignmentTrackHeight(),
+                showSoftClips: true,
+            }],
+            showRuler: true,
+        };
+        if (locus) {
+            options.locus = locus;
+            options._nodeRangeGuard = { contig, start: 1, end, locus };
+        }
+
+        await this._loadOrCreate(options);
+        if (el) el.textContent = '';
+    },    /* ────── node candidate view ────── */
 
     async showNodeView(nodeId) {
         if (!igvAvailable()) return;
@@ -157,7 +311,8 @@ const IgvController = {
         const binding = node.candidate_binding || null;
         const refPath = binding?.ref_fa_url || node.urls?.ref_fa;
         const bamPath = binding?.bam_url || node.urls?.bam_files?.[0];
-        const baiPath = binding?.bam_index_url || (bamPath ? bamPath + '.bai' : null);
+        const alnFormat = alignmentFormat(bamPath);
+        const baiPath = binding?.bam_index_url || (bamPath ? defaultAlignmentIndex(bamPath) : null);
 
         if (!refPath || !bamPath) {
             console.warn('No candidate/ref/BAM binding for node:', nodeId, node);
@@ -186,7 +341,7 @@ const IgvController = {
                     : `${node.label || node.id} — reads`,
                 url: bamUrl,
                 indexURL: CONFIG.httpBase + '/' + baiPath,
-                format: 'bam',
+                format: alnFormat,
                 type: 'alignment',
                 height: this._alignmentTrackHeight(),
                 showSoftClips: true,
@@ -224,8 +379,12 @@ const IgvController = {
         const roundStr = 'round_' + String(round).padStart(2, '0');
         const normalDir = 'MH63_auto/auto_multipath_roundtree_run/paths/' + pathId + '/' + roundStr + '/candidates/normal';
         const refUrl = CONFIG.httpBase + '/' + normalDir + '/ref.fa';
-        const bamUrl = CONFIG.httpBase + '/' + normalDir + '/strict_reads_vs_ref.bam';
-        const baiUrl = bamUrl + '.bai';
+        const alnPath = normalDir + '/strict_reads_vs_ref.cram';
+        const fallbackAlnPath = normalDir + '/strict_reads_vs_ref.bam';
+        const alnUrl = CONFIG.httpBase + '/' + alnPath;
+        const bamUrl = alnUrl;
+        const alnFormat = 'cram';
+        const baiUrl = alnUrl + '.crai';
 
         const options = {
             genome: 'mtDNA_clip_' + clipNodeId,
@@ -238,7 +397,7 @@ const IgvController = {
                 name: (clipNode.label || clipNode.id) + ' — strict reads vs ref (normal)',
                 url: bamUrl,
                 indexURL: baiUrl,
-                format: 'bam',
+                format: alnFormat,
                 type: 'alignment',
                 height: this._alignmentTrackHeight(),
                 showSoftClips: true,
@@ -252,6 +411,47 @@ const IgvController = {
         if (el) el.textContent = '';
     },
 
+    async _urlExists(url) {
+        if (!url) return false;
+        try {
+            const resp = await fetch(url, { method: 'HEAD' });
+            return resp.ok;
+        } catch (err) {
+            return false;
+        }
+    },
+
+    async _resolveAlignmentResource(candidates) {
+        for (const candidate of candidates) {
+            if (!candidate || !candidate.path || !candidate.indexPath) continue;
+            const url = CONFIG.httpBase + '/' + candidate.path;
+            const indexURL = CONFIG.httpBase + '/' + candidate.indexPath;
+            const [hasAlignment, hasIndex] = await Promise.all([
+                this._urlExists(url),
+                this._urlExists(indexURL),
+            ]);
+            if (hasAlignment && hasIndex) {
+                return {
+                    url,
+                    indexURL,
+                    format: alignmentFormat(candidate.path),
+                };
+            }
+        }
+        return null;
+    },
+    async _fetchFirstContig(indexUrl) {
+        try {
+            const resp = await fetch(indexUrl);
+            if (!resp.ok) return '';
+            const text = await resp.text();
+            const firstLine = text.split(/\r?\n/).find(line => line.trim().length > 0);
+            return firstLine ? firstLine.split(/\s+/)[0] : '';
+        } catch (err) {
+            console.warn('Failed to read FASTA index for locus:', err);
+            return '';
+        }
+    },
     /* ────── internal ────── */
 
     async _loadLatest(options, requestId) {
@@ -267,6 +467,8 @@ const IgvController = {
     async _loadOrCreate(options) {
         const container = this._container;
         if (!container) return;
+        const nodeRangeGuard = options._nodeRangeGuard || null;
+        if (Object.prototype.hasOwnProperty.call(options, '_nodeRangeGuard')) delete options._nodeRangeGuard;
 
         // Show panel
         const panel = document.getElementById('igv-panel');
@@ -286,6 +488,11 @@ const IgvController = {
                 this._removeCurrentBrowser();
             }
             this._browser = await igv.createBrowser(container, options);
+            if (nodeRangeGuard) {
+                this._startNodeRangeGuard(nodeRangeGuard);
+            } else {
+                this._clearNodeRangeGuard();
+            }
             // Ensure browser fills the container
             if (this._browser && panel && !panel.classList.contains('collapsed')) {
                 requestAnimationFrame(() => this._resizeToPanel());
@@ -375,6 +582,61 @@ const IgvController = {
         }
     },
 
+    _startNodeRangeGuard(bounds) {
+        this._clearNodeRangeGuard();
+        if (!bounds || !bounds.contig || !bounds.end) return;
+        this._rangeGuardBounds = bounds;
+        this._rangeGuardTimer = window.setInterval(() => this._enforceNodeRangeGuard(), 1200);
+        window.setTimeout(() => this._enforceNodeRangeGuard(), 500);
+    },
+
+    _clearNodeRangeGuard() {
+        if (this._rangeGuardTimer) {
+            window.clearInterval(this._rangeGuardTimer);
+            this._rangeGuardTimer = null;
+        }
+        this._rangeGuardBounds = null;
+        this._rangeGuardBusy = false;
+    },
+
+    _enforceNodeRangeGuard() {
+        if (!this._browser || !this._rangeGuardBounds || this._rangeGuardBusy) return;
+        const bounds = this._rangeGuardBounds;
+        const range = this._currentIgvRange();
+        if (!range || range.chr !== bounds.contig) return;
+        if (range.start > bounds.end || range.end > bounds.end) {
+            this._rangeGuardBusy = true;
+            Promise.resolve(this._browser.search(bounds.locus))
+                .catch(err => console.warn('Node range guard search failed:', err))
+                .finally(() => {
+                    window.setTimeout(() => { this._rangeGuardBusy = false; }, 300);
+                });
+        }
+    },
+
+    _currentIgvRange() {
+        if (!this._browser) return null;
+        if (typeof this._browser.currentLocus === 'function') {
+            const locusValue = this._browser.currentLocus();
+            const parsed = this._parseIgvLocus(Array.isArray(locusValue) ? locusValue[0] : locusValue);
+            if (parsed) return parsed;
+        }
+        const state = Array.isArray(this._browser.genomicStateList) ? this._browser.genomicStateList[0] : null;
+        const frame = state?.referenceFrame || (Array.isArray(this._browser.referenceFrameList) ? this._browser.referenceFrameList[0] : null);
+        if (!frame) return null;
+        const chr = frame.chrName || frame.chr || frame.name;
+        const start = Math.max(1, Math.floor(Number(frame.start || 0) + 1));
+        const width = Number(frame.bpPerPixel || 0) * Number(frame.viewportWidth || this._container?.clientWidth || 0);
+        const end = Math.ceil(start + Math.max(0, width));
+        return chr ? { chr, start, end } : null;
+    },
+
+    _parseIgvLocus(locusValue) {
+        if (!locusValue || typeof locusValue !== 'string') return null;
+        const match = locusValue.replace(/,/g, '').match(/^([^:]+):(\d+)-(\d+)/);
+        if (!match) return null;
+        return { chr: match[1], start: Number(match[2]), end: Number(match[3]) };
+    },
     _removeCurrentBrowser() {
         if (!this._browser) return;
         try {
@@ -415,6 +677,8 @@ const IgvController = {
                     this.showClipView(this._currentView.id);
                 } else if (this._currentView.type === 'node') {
                     this.showNodeView(this._currentView.id);
+                } else if (this._currentView.type === 'node-coverage') {
+                    this.showNodeCoverageView(this._currentView.id);
                 }
             } else {
                 // No previous view: set default height and resize
@@ -431,6 +695,21 @@ const IgvController = {
         return panel ? !panel.classList.contains('collapsed') : false;
     },
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -1,0 +1,44 @@
+{
+  "name": "mtdna-roundtree",
+  "version": "1.0.0",
+  "description": "mtDNA Round Tree — Clip/Rollback Visualization",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "com.mtdna.roundtree",
+    "productName": "mtDNA Round Tree",
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "js/**",
+      "css/**",
+      "tree_data.json",
+      "vendor/**",
+      "data/**"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  }
+}

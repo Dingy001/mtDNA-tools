@@ -4,7 +4,10 @@
 const CONFIG = {
     // --- Data source ---
     dataUrl: 'tree_data.json',
-    httpBase: 'http://localhost:8765',
+    nodeIntervalUrl: 'data/unique_round_node_intervals.json',
+    httpBase: (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.httpBase)
+        ? window.electronAPI.httpBase
+        : 'http://localhost:8765',
 
     // --- Layout parameters ---
     layout: {
@@ -69,6 +72,7 @@ const CONFIG = {
     // Label truncation: max length before ellipsis
     maxLabelLen: 22,
 };
+
 
 
 
