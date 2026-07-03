@@ -17,6 +17,7 @@ let httpPort = 0;
 let dataDir = '';
 let staticRoot = path.join(__dirname);
 let resourceRoot = process.resourcesPath || staticRoot;
+const resolvedFileCache = new Map();
 
 const configDir = app.getPath('userData');
 const configFile = path.join(configDir, 'data-dir.txt');
@@ -97,6 +98,7 @@ function loadDataDir() {
 
 function saveDataDir(dir) {
     const runDir = findRunDir(dir) || dir;
+    resolvedFileCache.clear();
     try {
         fs.mkdirSync(configDir, { recursive: true });
         fs.writeFileSync(configFile, runDir, 'utf-8');
@@ -177,6 +179,16 @@ function candidatePathsForRoot(root, relPath) {
 function resolveFile(reqPath) {
     const decoded = decodeURIComponent(reqPath || '/');
     const relPath = decoded.replace(/^[\\/]+/, '') || 'index.html';
+    const cached = resolvedFileCache.get(relPath);
+    if (cached) {
+        try {
+            const st = fs.statSync(cached.path);
+            if (st.isFile()) return { path: cached.path, size: st.size };
+        } catch (_) {
+            resolvedFileCache.delete(relPath);
+        }
+    }
+
     const candidates = [];
 
     for (const root of dataRoots()) {
@@ -195,7 +207,11 @@ function resolveFile(reqPath) {
     for (const fp of fallbackCandidates) {
         try {
             const st = fs.statSync(fp);
-            if (st.isFile()) return { path: fp, size: st.size };
+            if (st.isFile()) {
+                const resolved = { path: fp, size: st.size };
+                resolvedFileCache.set(relPath, resolved);
+                return resolved;
+            }
         } catch (_) { /* continue */ }
     }
     return null;

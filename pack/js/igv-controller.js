@@ -112,8 +112,8 @@ const IgvController = {
             const cramPath = finalPathFile.bam_url ? finalPathFile.bam_url.replace(/\.bam$/i, '.cram') : '';
             const cramIndexPath = cramPath ? cramPath + '.crai' : '';
             const alignment = await this._resolveAlignmentResource([
-                { path: cramPath, indexPath: cramIndexPath },
                 { path: finalPathFile.bam_url, indexPath: finalPathFile.bam_index_url },
+                { path: cramPath, indexPath: cramIndexPath },
             ]);
             if (!alignment) {
                 if (el) el.textContent = `Missing final_path alignment files: ${finalPathFile.bam_url}`;
@@ -140,7 +140,7 @@ const IgvController = {
                     format: alignment.format,
                     type: 'alignment',
                     height: this._alignmentTrackHeight(),
-                    showSoftClips: true,
+                    ...this._alignmentTrackOptions(),
                 }],
                 showRuler: true,
             };
@@ -173,8 +173,11 @@ const IgvController = {
         const refUrl = CONFIG.httpBase + '/' + lastRound.ref_fa_url;
         const idxUrl = refUrl + '.fai';
         const alnIndexPath = lastRound.bam_index_url || defaultAlignmentIndex(lastRound.bam_url);
+        const cramRoundPath = lastRound.bam_url ? lastRound.bam_url.replace(/\.bam$/i, '.cram') : '';
+        const cramRoundIndexPath = cramRoundPath ? cramRoundPath + '.crai' : '';
         const alignment = await this._resolveAlignmentResource([
             { path: lastRound.bam_url, indexPath: alnIndexPath },
+            { path: cramRoundPath, indexPath: cramRoundIndexPath },
         ]);
         if (!alignment) {
             if (el) el.textContent = `Missing round alignment files: ${lastRound.bam_url}`;
@@ -199,7 +202,7 @@ const IgvController = {
                 format: alignment.format,
                 type: 'alignment',
                 height: this._alignmentTrackHeight(),
-                showSoftClips: true,
+                ...this._alignmentTrackOptions(),
             }],
             showRuler: true,
         };
@@ -254,8 +257,8 @@ const IgvController = {
         }
 
         const alignment = await this._resolveAlignmentResource([
-            { path: finalCramPath, indexPath: finalCramIndexPath },
             { path: finalBamPath, indexPath: finalBamIndexPath },
+            { path: finalCramPath, indexPath: finalCramIndexPath },
         ]);
         if (!alignment) {
             if (el) el.textContent = `Missing final path alignment files: ${finalBamPath}`;
@@ -283,7 +286,7 @@ const IgvController = {
                 format: alignment.format,
                 type: 'alignment',
                 height: this._alignmentTrackHeight(),
-                showSoftClips: true,
+                ...this._alignmentTrackOptions(),
             }],
             showRuler: true,
         };
@@ -311,8 +314,9 @@ const IgvController = {
         const binding = node.candidate_binding || null;
         const refPath = binding?.ref_fa_url || node.urls?.ref_fa;
         const bamPath = binding?.bam_url || node.urls?.bam_files?.[0];
-        const alnFormat = alignmentFormat(bamPath);
         const baiPath = binding?.bam_index_url || (bamPath ? defaultAlignmentIndex(bamPath) : null);
+        const cramPath = bamPath ? bamPath.replace(/\.bam$/i, '.cram') : '';
+        const cramIndexPath = cramPath ? cramPath + '.crai' : '';
 
         if (!refPath || !bamPath) {
             console.warn('No candidate/ref/BAM binding for node:', nodeId, node);
@@ -326,8 +330,16 @@ const IgvController = {
         this._currentView = { type: 'node', id: nodeId };
         this._updateTitle(title);
 
+        const alignment = await this._resolveAlignmentResource([
+            { path: bamPath, indexPath: baiPath },
+            { path: cramPath, indexPath: cramIndexPath },
+        ]);
+        if (!alignment) {
+            if (el) el.textContent = `Missing node alignment files: ${bamPath}`;
+            return;
+        }
+
         const refUrl = CONFIG.httpBase + '/' + refPath;
-        const bamUrl = CONFIG.httpBase + '/' + bamPath;
         const options = {
             genome: 'mtDNA_node_' + nodeId,
             reference: {
@@ -339,12 +351,12 @@ const IgvController = {
                 name: binding
                     ? `${node.label || node.id} — ${binding.candidate} strict reads`
                     : `${node.label || node.id} — reads`,
-                url: bamUrl,
-                indexURL: CONFIG.httpBase + '/' + baiPath,
-                format: alnFormat,
+                url: alignment.url,
+                indexURL: alignment.indexURL,
+                format: alignment.format,
                 type: 'alignment',
                 height: this._alignmentTrackHeight(),
-                showSoftClips: true,
+                ...this._alignmentTrackOptions(),
             }],
             showRuler: true,
         };
@@ -379,12 +391,18 @@ const IgvController = {
         const roundStr = 'round_' + String(round).padStart(2, '0');
         const normalDir = 'MH63_auto/auto_multipath_roundtree_run/paths/' + pathId + '/' + roundStr + '/candidates/normal';
         const refUrl = CONFIG.httpBase + '/' + normalDir + '/ref.fa';
-        const alnPath = normalDir + '/strict_reads_vs_ref.cram';
-        const fallbackAlnPath = normalDir + '/strict_reads_vs_ref.bam';
-        const alnUrl = CONFIG.httpBase + '/' + alnPath;
-        const bamUrl = alnUrl;
-        const alnFormat = 'cram';
-        const baiUrl = alnUrl + '.crai';
+        const bamPath = normalDir + '/strict_reads_vs_ref.bam';
+        const baiPath = bamPath + '.bai';
+        const cramPath = normalDir + '/strict_reads_vs_ref.cram';
+        const cramIndexPath = cramPath + '.crai';
+        const alignment = await this._resolveAlignmentResource([
+            { path: bamPath, indexPath: baiPath },
+            { path: cramPath, indexPath: cramIndexPath },
+        ]);
+        if (!alignment) {
+            if (el) el.textContent = `Missing clip alignment files: ${bamPath}`;
+            return;
+        }
 
         const options = {
             genome: 'mtDNA_clip_' + clipNodeId,
@@ -395,12 +413,12 @@ const IgvController = {
             },
             tracks: [{
                 name: (clipNode.label || clipNode.id) + ' — strict reads vs ref (normal)',
-                url: bamUrl,
-                indexURL: baiUrl,
-                format: alnFormat,
+                url: alignment.url,
+                indexURL: alignment.indexURL,
+                format: alignment.format,
                 type: 'alignment',
                 height: this._alignmentTrackHeight(),
-                showSoftClips: true,
+                ...this._alignmentTrackOptions(),
             }],
             showRuler: true,
         };
@@ -520,6 +538,14 @@ const IgvController = {
             (toolbar ? toolbar.offsetHeight : 0) +
             (resizer ? resizer.offsetHeight : 0);
         return Math.max(CONFIG.igv.minHeight, window.innerHeight - fixedHeight);
+    },
+
+    _alignmentTrackOptions() {
+        return {
+            visibilityWindow: 50000,
+            samplingDepth: 100,
+            showSoftClips: false,
+        };
     },
 
     _alignmentTrackHeight() {

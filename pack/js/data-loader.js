@@ -11,7 +11,6 @@ const DataLoader = {
         const resp = await fetch(url);
         if (!resp.ok) throw new Error(`Failed to load data: ${resp.status} ${resp.statusText}`);
         const data = await resp.json();
-        this._preferCramAlignments(data);
         await this._loadRoundNodeIntervals(data);
 
         // Build indices
@@ -267,8 +266,8 @@ const DataLoader = {
                 dir,
                 ref_fa_url: `${dir}/ref.fa`,
                 ref_fai_url: `${dir}/ref.fa.fai`,
-                bam_url: `${dir}/strict_reads_vs_ref.cram`,
-                bam_index_url: `${dir}/strict_reads_vs_ref.cram.crai`,
+                bam_url: `${dir}/strict_reads_vs_ref.bam`,
+                bam_index_url: `${dir}/strict_reads_vs_ref.bam.bai`,
                 source_node_id: rollbackNode.id,
             };
         };
