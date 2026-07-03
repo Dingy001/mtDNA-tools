@@ -378,8 +378,9 @@ class App {
             // 7. IGV controller (lazy, create on first use)
             IgvController.init('igv-container', appState, appData);
 
-            // 8. Fit view
-            TreeInteraction.fitView();
+            // 8. Fit view after the container has its final size.
+            requestAnimationFrame(() => TreeInteraction.fitView());
+            setTimeout(() => TreeInteraction.fitView(), 120);
 
             // IGV close button
             const igvClose = document.getElementById('igv-close');

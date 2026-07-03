@@ -8,6 +8,7 @@ const TreeInteraction = {
     _container: null,
     _svg: null,
     _scale: 1.0,
+    _minScale: 1.0,
     _baseW: 0,
     _baseH: 0,
     _dragging: false,
@@ -28,6 +29,7 @@ const TreeInteraction = {
         this._baseW = bounds.w;
         this._baseH = bounds.h;
         this._scale = 1.0;
+        this._minScale = CONFIG.zoom.min;
         this._applyScale();
 
         this._container.addEventListener('wheel', (e) => this._onWheel(e), { passive: false });
@@ -50,7 +52,7 @@ const TreeInteraction = {
         event.preventDefault();
 
         const delta = event.deltaY > 0 ? -CONFIG.zoom.step : CONFIG.zoom.step;
-        const newScale = Math.max(CONFIG.zoom.min,
+        const newScale = Math.max(this._minScale,
             Math.min(CONFIG.zoom.max, this._scale + delta));
 
         const rect = this._container.getBoundingClientRect();
@@ -116,14 +118,26 @@ const TreeInteraction = {
     },
 
     zoomOut() {
-        this._scale = Math.max(CONFIG.zoom.min, this._scale - CONFIG.zoom.step);
+        this._scale = Math.max(this._minScale, this._scale - CONFIG.zoom.step);
         this._applyScale();
     },
 
     fitView() {
         const cw = this._container.clientWidth;
-        this._scale = Math.max(CONFIG.zoom.fitMin || CONFIG.zoom.min, cw / this._baseW);
+        const ch = this._container.clientHeight;
+        if (!cw || !ch || !this._baseW || !this._baseH) return;
+
+        const padding = 24;
+        const fitW = Math.max(1, cw - padding * 2) / this._baseW;
+        const fitH = Math.max(1, ch - padding * 2) / this._baseH;
+        const fitScale = Math.min(fitW, fitH, CONFIG.zoom.max);
+
+        this._minScale = Math.min(CONFIG.zoom.min, fitScale);
+        this._scale = fitScale;
         this._applyScale();
+
+        this._container.scrollLeft = Math.max(0, (this._baseW * this._scale - cw) / 2);
+        this._container.scrollTop = Math.max(0, (this._baseH * this._scale - ch) / 2);
     },
 
     resetView() {
