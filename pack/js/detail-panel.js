@@ -81,96 +81,73 @@ const DetailPanel = {
             </div>`;
         }
 
-        // Basic info table
-        const fields = [
-            ['Node ID', node.id],
-            ['Label', node.label],
-            ['Round', node.round],
-            ['Status', node.status],
-            ['Path ID', node.path_id],
-            ['Ref Length', node.ref_len],
-            ['Parent Path', node.parent_path_id],
-            ['Split Round', node.split_round],
-            ['Split Candidate', node.split_candidate],
-            ['Split Mode', node.split_mode],
-            ['Rolled Back', node.rolled_back],
-            ['Terminal Paths', node.num_terminal_paths_through_node],
-            ['Candidate Dir', node.candidate_binding ? node.candidate_binding.dir : ''],
-        ];
-        html += `<div class="detail-section">
-            <div class="detail-section-title">Basic Info</div>
-            <table class="kv-table">`;
-        for (const [k, v] of fields) {
-            const val = (v === undefined || v === null || v === '' || v === 'NA') ? '-' : String(v);
-            html += `<tr><td class="kv-key">${this._esc(k)}</td><td class="kv-val">${this._esc(val)}</td></tr>`;
-        }
-        html += `</table></div>`;
-
-        const finalPathsThroughNode = this._data._nodeFinalPathsById ? this._data._nodeFinalPathsById.get(node.id) : null;
-        if (finalPathsThroughNode && finalPathsThroughNode.length > 0) {
-            html += `<div class="detail-section">
-                <div class="detail-section-title">Final Path Mapping</div>
-                <table class="kv-table">
-                <tr><td class="kv-key">Path Count</td><td class="kv-val">${finalPathsThroughNode.length}</td></tr>
-                <tr><td class="kv-key">Final Paths</td><td class="kv-val">${this._esc(finalPathsThroughNode.join(', '))}</td></tr>
-                </table></div>`;
-        }
-
-        const interval = node.round_node_interval || (this._data._roundNodeIntervalById ? this._data._roundNodeIntervalById.get(node.id) : null);
-        if (interval) {
-            const intervalFields = [
-                ['Node Coordinates', `1-${interval.node_ref_len}`],
-                ['Node Ref Length', interval.node_ref_len],
-                ['Round Ref', interval.round_ref_fa_url || interval.round_ref_fa],
-                ['Node Alignment', interval.node_cram_url || interval.node_bam_url],
-                ['Shared By Paths', `${interval.num_final_paths || 0} final path(s)`],
-                ['Final Paths', Array.isArray(interval.final_paths) ? interval.final_paths.join(', ') : interval.final_paths],
-            ];
-            html += `<div class="detail-section">
-                <div class="detail-section-title">Round Node Coverage Index</div>
-                <table class="kv-table">`;
-            for (const [k, v] of intervalFields) {
-                const val = (v === undefined || v === null || v === '' || v === 'NA') ? '-' : String(v);
-                html += `<tr><td class="kv-key">${this._esc(k)}</td><td class="kv-val">${this._esc(val)}</td></tr>`;
-            }
-            html += `</table></div>`;
-        }
-
-        // Candidates table (for rollback nodes)
-        if (Array.isArray(node.candidates) && node.candidates.length > 0) {
-            html += `<div class="detail-section">
-                <div class="detail-section-title">Candidates (${node.candidates.length})</div>
-                <div class="table-wrap"><table class="data-table">
-                <thead><tr>`;
-            const keys = Object.keys(node.candidates[0]);
-            for (const k of keys) {
-                html += `<th>${this._esc(k)}</th>`;
-            }
-            html += `</tr></thead><tbody>`;
-            for (const row of node.candidates) {
-                html += `<tr>`;
-                for (const k of keys) {
-                    html += `<td>${this._esc(String(row[k] || ''))}</td>`;
-                }
-                html += `</tr>`;
-            }
-            html += `</tbody></table></div></div>`;
-        }
-
-        // IGV action buttons
-        html += `<div class="detail-section">
-            <div class="detail-section-title">IGV Actions</div>
-            <div class="btn-group">`;
         if (isRollback) {
-            html += `<button class="btn btn-igv" data-action="igv-clip" data-node-id="${this._esc(node.id)}">View clip/rollback in IGV (normal)</button>`;
+            // ── Rollback Node ──
+            html += `<div class="detail-section">
+                <div class="detail-section-title">Rollback Info</div>
+                <table class="kv-table">
+                <tr><td class="kv-key">Rolled Back</td><td class="kv-val">${this._esc(node.rolled_back || '-')}</td></tr>
+                <tr><td class="kv-key">Rollback to Round</td><td class="kv-val">${this._esc(node.selected_round || '-')}</td></tr>
+                <tr><td class="kv-key">Selected Ref Len</td><td class="kv-val">${this._fmtNum(node.selected_ref_len)}</td></tr>
+                </table></div>`;
+
+            // Candidates table
+            if (Array.isArray(node.candidates) && node.candidates.length > 0) {
+                html += `<div class="detail-section">
+                    <div class="detail-section-title">Candidates (${node.candidates.length})</div>
+                    <div class="table-wrap"><table class="data-table">
+                    <thead><tr>
+                        <th>Candidate</th><th>Mode</th><th>Status</th><th>Ref Len</th><th>Reads</th>
+                    </tr></thead><tbody>`;
+                for (const row of node.candidates) {
+                    html += `<tr>
+                        <td>${this._esc(row.candidate_id || '')}</td>
+                        <td>${this._esc(row.mode || '')}</td>
+                        <td>${this._esc(row.status || '')}</td>
+                        <td>${this._fmtNum(row.ref_len)}</td>
+                        <td>${this._esc(row.no_clip_reads || '-')}</td>
+                    </tr>`;
+                }
+                html += `</tbody></table></div></div>`;
+            }
+
+            // IGV actions
+            html += `<div class="detail-section">
+                <div class="detail-section-title">IGV Actions</div>
+                <div class="btn-group">
+                <button class="btn btn-igv" data-action="igv-clip" data-node-id="${this._esc(node.id)}">View clip/rollback in IGV (normal)</button>
+                <button class="btn btn-igv" data-action="highlight-node" data-node-id="${this._esc(node.id)}">Highlight &amp; center node</button>
+                </div></div>`;
+
         } else {
-            html += `<button class="btn btn-igv" data-action="igv-node" data-node-id="${this._esc(node.id)}">View this round in IGV</button>`;
+            // ── Normal Node ──
+            html += `<div class="detail-section">
+                <div class="detail-section-title">Identity</div>
+                <table class="kv-table">
+                <tr><td class="kv-key">Round</td><td class="kv-val">${this._esc(node.round)}</td></tr>
+                <tr><td class="kv-key">Ref Length</td><td class="kv-val">${this._fmtNum(node.ref_len)} bp</td></tr>
+                <tr><td class="kv-key">Ref Read Name</td><td class="kv-val">${this._esc(node.ref_read_name || '-')}</td></tr>
+                </table></div>`;
+
+            // Coverage (conditional)
+            const interval = node.round_node_interval || (this._data._roundNodeIntervalById ? this._data._roundNodeIntervalById.get(node.id) : null);
+            if (interval) {
+                html += `<div class="detail-section">
+                    <div class="detail-section-title">Coverage</div>
+                    <table class="kv-table">
+                    <tr><td class="kv-key">Node Coordinates</td><td class="kv-val">1-${this._fmtNum(interval.node_ref_len)}</td></tr>
+                    <tr><td class="kv-key">Shared By</td><td class="kv-val">${interval.num_final_paths || 0} final path(s)</td></tr>
+                    </table></div>`;
+            }
+
+            // IGV actions
+            html += `<div class="detail-section">
+                <div class="detail-section-title">IGV Actions</div>
+                <div class="btn-group">
+                <button class="btn btn-igv" data-action="igv-node" data-node-id="${this._esc(node.id)}">View this round in IGV</button>
+                <button class="btn btn-igv" data-action="highlight-node" data-node-id="${this._esc(node.id)}">Highlight &amp; center node</button>
+                </div></div>`;
         }
-        if (!isRollback && (node.round_node_interval || (this._data._roundNodeIntervalById && this._data._roundNodeIntervalById.has(node.id)))) {
-            html += `<button class="btn btn-igv" data-action="igv-node-coverage" data-node-id="${this._esc(node.id)}">View node coverage in IGV (1-node end)</button>`;
-        }
-        html += `<button class="btn btn-igv" data-action="highlight-node" data-node-id="${this._esc(node.id)}">Highlight & center node</button>`;
-        html += `</div></div>`;
 
         if (contentEl) contentEl.innerHTML = html;
 
@@ -193,32 +170,30 @@ const DetailPanel = {
 
         if (titleEl) titleEl.textContent = 'Edge Detail';
 
-        const isSpawn = (einfo.kind || edge.kind) === 'spawn';
         const targetNode = this._data._nodeById.get(edge.target);
         const targetIsRollback = targetNode && String(targetNode.status || '').includes('CLIP_ROLLBACK_ATTEMPT');
+        const sourceLabel = einfo.source_label || edge.source;
+        const targetLabel = einfo.target_label || edge.target;
+        const kindLabel = edge.kind || einfo.kind || '';
 
-        const fields = [
-            ['Source', edge.source],
-            ['Target', edge.target],
-            ['Edge Kind', edge.kind || einfo.kind],
-            ['Visual Kind', einfo.visual_kind || ''],
-            ['Split Candidate', einfo.split_candidate || ''],
-            ['Split Mode', einfo.split_mode || ''],
-            ['Branch Color', einfo.branch_color || ''],
-            ['Source Label', einfo.source_label || ''],
-            ['Target Label', einfo.target_label || ''],
-        ];
-
+        // Visual connection line
         let html = `<div class="detail-section">
-            <div class="detail-section-title">Edge Info</div>
-            <table class="kv-table">`;
-        for (const [k, v] of fields) {
-            const val = (v === undefined || v === null || v === '' || v === 'NA') ? '-' : String(v);
-            html += `<tr><td class="kv-key">${this._esc(k)}</td><td class="kv-val">${this._esc(val)}</td></tr>`;
-        }
-        html += `</table></div>`;
+            <div class="edge-connection">
+                <span class="edge-src">${this._esc(sourceLabel)}</span>
+                <span class="edge-kind">──${this._esc(kindLabel)}──▶</span>
+                <span class="edge-tgt">${this._esc(targetLabel)}</span>
+            </div>
+            </div>`;
 
-        // IGV action buttons for spawn edges (target node)
+        // Basic info
+        html += `<div class="detail-section">
+            <div class="detail-section-title">Edge Info</div>
+            <table class="kv-table">
+            <tr><td class="kv-key">Source</td><td class="kv-val">${this._esc(edge.source)}</td></tr>
+            <tr><td class="kv-key">Target</td><td class="kv-val">${this._esc(edge.target)}</td></tr>
+            </table></div>`;
+
+        // IGV action buttons
         html += `<div class="detail-section">
             <div class="detail-section-title">IGV Actions</div>
             <div class="btn-group">`;
@@ -226,7 +201,7 @@ const DetailPanel = {
         if (!targetIsRollback && targetNode && (targetNode.round_node_interval || (this._data._roundNodeIntervalById && this._data._roundNodeIntervalById.has(edge.target)))) {
             html += `<button class="btn btn-igv" data-action="igv-node-coverage" data-node-id="${this._esc(edge.target)}">View target coverage in IGV</button>`;
         }
-        html += `<button class="btn btn-igv" data-action="highlight-node" data-node-id="${this._esc(edge.target)}">Highlight & center target node</button>`;
+        html += `<button class="btn btn-igv" data-action="highlight-node" data-node-id="${this._esc(edge.target)}">Highlight &amp; center target node</button>`;
         html += `</div></div>`;
 
         if (contentEl) contentEl.innerHTML = html;
@@ -245,6 +220,13 @@ const DetailPanel = {
 
     _esc(s) {
         return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    },
+
+    _fmtNum(v) {
+        if (v === undefined || v === null || v === '' || v === 'NA') return '-';
+        const n = Number(v);
+        if (!Number.isFinite(n)) return String(v);
+        return n.toLocaleString('en-US');
     },
 };
 

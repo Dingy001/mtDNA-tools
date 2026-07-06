@@ -299,6 +299,21 @@ body {
 .btn-igv:hover { background: #e0f2fe; }
 .btn-group { display: flex; flex-direction: column; gap: 6px; }
 
+/* Edge connection visualization */
+.edge-connection {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 0;
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+.edge-src { color: #0369a1; }
+.edge-tgt { color: #059669; }
+.edge-kind { color: #6b7280; font-size: 12px; }
+
 /* ── Resizer ── */
 #resizer {
     grid-row: 4;
