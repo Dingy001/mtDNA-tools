@@ -389,21 +389,45 @@ const IgvController = {
             const edgeInfo = this._data.edge_info ? this._data.edge_info[edge.id] : null;
             return (edgeInfo?.kind || edge.kind) === 'spawn' && (edgeInfo?.split_candidate || 'normal') === 'normal';
         });
-        const flatNormalBinding = normalSpawnEdge && this._data._flatCandidateBindingBySpawnEdgeId
-            ? this._data._flatCandidateBindingBySpawnEdgeId.get(normalSpawnEdge.id)
-            : null;
-        const refPath = await this._resolveReferencePath([
-            flatNormalBinding?.ref_fa_url,
-        ]);
-        const alignmentCandidates = this._alignmentCandidates([
-            { path: flatNormalBinding?.bam_url, indexPath: flatNormalBinding?.bam_index_url },
-        ]);
-        const alignment = await this._resolveAlignmentResource(alignmentCandidates);
-        if (!flatNormalBinding || !refPath || !alignment) {
-            if (el) el.textContent = `Missing R_flat clip reference/alignment files: ${alignmentCandidates[0]?.path || clipNodeId}`;
+        if (!normalSpawnEdge) {
+            if (el) el.textContent = 'No normal spawn edge for rollback node: ' + clipNodeId;
+            console.warn('No normal spawn edge for rollback node:', clipNodeId);
             return;
         }
 
+        const flatNormalBinding = this._data._flatCandidateBindingBySpawnEdgeId
+            ? this._data._flatCandidateBindingBySpawnEdgeId.get(normalSpawnEdge.id)
+            : null;
+        if (!flatNormalBinding) {
+            if (el) el.textContent = 'No R_flat binding for edge: ' + normalSpawnEdge.id;
+            console.warn('No R_flat binding for rollback edge:', normalSpawnEdge.id);
+            return;
+        }
+
+        const rFlatLabel = flatNormalBinding.dir || ((flatNormalBinding.rollback_dir || '') + '/' + (flatNormalBinding.r_dir || ''));
+        if (el) el.textContent = 'R_flat: ' + rFlatLabel + ' | checking ref.fa';
+        const refPath = await this._resolveReferencePath([
+            flatNormalBinding.ref_fa_url,
+        ]);
+        if (!refPath) {
+            if (el) el.textContent = 'Missing R_flat ref/fa.fai: ' + flatNormalBinding.ref_fa_url;
+            console.warn('Missing R_flat reference files:', flatNormalBinding.ref_fa_url, flatNormalBinding.ref_fai_url);
+            return;
+        }
+
+        if (el) el.textContent = 'R_flat: ' + rFlatLabel + ' | checking BAM/BAI';
+        const alignmentCandidates = this._alignmentCandidates([
+            { path: flatNormalBinding.bam_url, indexPath: flatNormalBinding.bam_index_url },
+        ]);
+        const alignment = await this._resolveAlignmentResource(alignmentCandidates);
+        if (!alignment) {
+            const tried = alignmentCandidates.map(item => item.path + ' + ' + item.indexPath).join(' ; ');
+            if (el) el.textContent = 'Missing R_flat BAM/index: ' + tried;
+            console.warn('Missing R_flat alignment files:', tried);
+            return;
+        }
+
+        if (el) el.textContent = 'R_flat: ' + rFlatLabel + ' | loading IGV';
         const refUrl = CONFIG.httpBase + '/' + refPath;
         const options = {
             genome: 'mtDNA_clip_' + clipNodeId,
