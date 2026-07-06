@@ -385,39 +385,29 @@ const IgvController = {
             return;
         }
 
-        const normalSpawnEdge = (this._data._edgesBySource.get(clipNodeId) || []).find(edge => {
-            const edgeInfo = this._data.edge_info ? this._data.edge_info[edge.id] : null;
-            return (edgeInfo?.kind || edge.kind) === 'spawn' && (edgeInfo?.split_candidate || 'normal') === 'normal';
-        });
-        if (!normalSpawnEdge) {
-            if (el) el.textContent = 'No normal spawn edge for rollback node: ' + clipNodeId;
-            console.warn('No normal spawn edge for rollback node:', clipNodeId);
-            return;
-        }
-
-        const flatNormalBinding = this._data._flatCandidateBindingBySpawnEdgeId
-            ? this._data._flatCandidateBindingBySpawnEdgeId.get(normalSpawnEdge.id)
+        const ownBinding = this._data._flatRollbackOwnBindingBySourceId
+            ? this._data._flatRollbackOwnBindingBySourceId.get(clipNodeId)
             : null;
-        if (!flatNormalBinding) {
-            if (el) el.textContent = 'No R_flat binding for edge: ' + normalSpawnEdge.id;
-            console.warn('No R_flat binding for rollback edge:', normalSpawnEdge.id);
+        if (!ownBinding) {
+            if (el) el.textContent = 'No R_flat binding for rollback node: ' + clipNodeId;
+            console.warn('No R_flat binding for rollback node:', clipNodeId);
             return;
         }
 
-        const rFlatLabel = flatNormalBinding.dir || ((flatNormalBinding.rollback_dir || '') + '/' + (flatNormalBinding.r_dir || ''));
+        const rFlatLabel = ownBinding.rollback_dir + '/' + ownBinding.r_dir;
         if (el) el.textContent = 'R_flat: ' + rFlatLabel + ' | checking ref.fa';
         const refPath = await this._resolveReferencePath([
-            flatNormalBinding.ref_fa_url,
+            ownBinding.ref_fa_url,
         ]);
         if (!refPath) {
-            if (el) el.textContent = 'Missing R_flat ref/fa.fai: ' + flatNormalBinding.ref_fa_url;
-            console.warn('Missing R_flat reference files:', flatNormalBinding.ref_fa_url, flatNormalBinding.ref_fai_url);
+            if (el) el.textContent = 'Missing R_flat ref/fa.fai: ' + ownBinding.ref_fa_url;
+            console.warn('Missing R_flat reference files:', ownBinding.ref_fa_url, ownBinding.ref_fai_url);
             return;
         }
 
         if (el) el.textContent = 'R_flat: ' + rFlatLabel + ' | checking BAM/BAI';
         const alignmentCandidates = this._alignmentCandidates([
-            { path: flatNormalBinding.bam_url, indexPath: flatNormalBinding.bam_index_url },
+            { path: ownBinding.bam_url, indexPath: ownBinding.bam_index_url },
         ]);
         const alignment = await this._resolveAlignmentResource(alignmentCandidates);
         if (!alignment) {
@@ -437,7 +427,7 @@ const IgvController = {
                 indexURL: refUrl + '.fai',
             },
             tracks: [{
-                name: (clipNode.label || clipNode.id) + ' — strict reads vs ref (normal)',
+                name: (clipNode.label || clipNode.id) + ' — strict_reads_vs_ref',
                 url: alignment.url,
                 indexURL: alignment.indexURL,
                 format: alignment.format,
@@ -450,7 +440,7 @@ const IgvController = {
 
         await this._loadOrCreate(options);
         this._currentView = { type: 'clip', id: clipNodeId };
-        this._updateTitle('Clip/Rollback: ' + (clipNode.label || clipNode.id) + ' (normal candidate)');
+        this._updateTitle('Clip/Rollback: ' + (clipNode.label || clipNode.id) + ' (strict_reads_vs_ref)');
         if (el) el.textContent = '';
     },
 

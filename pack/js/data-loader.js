@@ -311,6 +311,24 @@ const DataLoader = {
 
         data._flatCandidateBindingBySpawnEdgeId = new Map();
         data._flatRollbackDirBySourceId = rollbackDirBySourceId;
+
+        // Build rollback node's own binding (strict_reads_vs_ref.bam inside its R_dir)
+        data._flatRollbackOwnBindingBySourceId = new Map();
+        for (const [sourceId, rollbackDir] of rollbackDirBySourceId) {
+            const rbStruct = structure[rollbackDir] || {};
+            const actualRDir = rbStruct.r_dir || '';
+            const refDir = actualRDir ? `${base}/${rollbackDir}/${actualRDir}` : `${base}/${rollbackDir}`;
+            data._flatRollbackOwnBindingBySourceId.set(sourceId, {
+                rollback_dir: rollbackDir,
+                r_dir: actualRDir,
+                dir: `${base}/${rollbackDir}`,
+                ref_fa_url: `${refDir}/ref.fa`,
+                ref_fai_url: `${refDir}/ref.fa.fai`,
+                bam_url: `${refDir}/strict_reads_vs_ref.bam`,
+                bam_index_url: `${refDir}/strict_reads_vs_ref.bam.bai`,
+            });
+        }
+
         for (const entry of entries) {
             const rollbackDir = rollbackDirBySourceId.get(entry.sourceId);
             if (!rollbackDir) continue;
