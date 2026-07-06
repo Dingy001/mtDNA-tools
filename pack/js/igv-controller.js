@@ -454,6 +454,150 @@ const IgvController = {
         if (el) el.textContent = '';
     },
 
+    /* ────── rollback branch reads-by-site edge view ────── */
+
+    async showRollbackEdgeReadsView(edgeId) {
+        if (!igvAvailable()) return;
+
+        const el = document.getElementById('igv-status');
+        if (el) el.textContent = 'Loading rollback edge reads...';
+
+        const edge = this._data._edgeById ? this._data._edgeById.get(edgeId) : null;
+        const edgeInfo = this._data.edge_info ? this._data.edge_info[edgeId] : null;
+        const sourceId = edgeInfo?.source || edge?.source || edgeId.split('__TO__')[0];
+        const targetId = edgeInfo?.target || edge?.target || edgeId.split('__TO__')[1];
+        const sourceNode = this._data._nodeById ? this._data._nodeById.get(sourceId) : null;
+        if (!sourceNode || !String(sourceNode.status || '').includes('CLIP_ROLLBACK_ATTEMPT')) {
+            if (el) el.textContent = 'Selected edge is not from a rollback node';
+            return;
+        }
+        if ((edgeInfo?.kind || edge?.kind) !== 'spawn') {
+            if (el) el.textContent = 'Selected edge is not a rollback spawn branch';
+            return;
+        }
+
+        const branchBinding = this._data._flatCandidateBindingBySpawnEdgeId
+            ? this._data._flatCandidateBindingBySpawnEdgeId.get(edgeId)
+            : null;
+        if (!branchBinding) {
+            if (el) el.textContent = 'No R_flat binding for edge: ' + edgeId;
+            return;
+        }
+
+        const normalEdge = (this._data._edgesBySource.get(sourceId) || []).find(item => {
+            const info = this._data.edge_info ? this._data.edge_info[item.id] : null;
+            return (info?.kind || item.kind) === 'spawn' && (info?.split_candidate || 'normal') === 'normal';
+        });
+        const normalBinding = normalEdge && this._data._flatCandidateBindingBySpawnEdgeId
+            ? this._data._flatCandidateBindingBySpawnEdgeId.get(normalEdge.id)
+            : null;
+        if (!normalBinding) {
+            if (el) el.textContent = 'No normal R_flat ref binding for rollback: ' + sourceId;
+            return;
+        }
+
+        const rollbackDir = branchBinding.rollback_dir;
+        const readBase = 'MH63_auto/auto_multipath_roundtree_run/R_flat/' + rollbackDir + '/normal_reads_by_site';
+        const candidate = edgeInfo?.split_candidate || branchBinding.candidate || 'normal';
+        const label = sourceNode.label || sourceNode.id;
+        if (el) el.textContent = 'R_flat edge: ' + rollbackDir + ' / ' + candidate + ' | checking ref';
+
+        const refPath = await this._resolveReferencePath([normalBinding.ref_fa_url]);
+        if (!refPath) {
+            if (el) el.textContent = 'Missing rollback normal ref/fa.fai: ' + normalBinding.ref_fa_url;
+            return;
+        }
+
+        const readEntries = await this._rollbackEdgeReadEntries(readBase, candidate);
+        if (readEntries.length === 0) {
+            if (el) el.textContent = 'No reads-by-site BAM mapping for ' + rollbackDir + ' / ' + candidate;
+            return;
+        }
+
+        if (el) el.textContent = 'R_flat edge: ' + rollbackDir + ' / ' + candidate + ' | checking BAM/BAI';
+        const tracks = [];
+        const missing = [];
+        for (const entry of readEntries) {
+            const alignment = await this._resolveAlignmentResource([{ path: entry.path, indexPath: entry.indexPath }]);
+            if (alignment) {
+                tracks.push({
+                    name: label + ' -> ' + (targetId || edgeId) + ' — ' + entry.name,
+                    url: alignment.url,
+                    indexURL: alignment.indexURL,
+                    format: alignment.format,
+                    type: 'alignment',
+                    height: this._alignmentTrackHeight(),
+                    ...this._alignmentTrackOptions(),
+                });
+            } else {
+                missing.push(entry.path + ' + ' + entry.indexPath);
+            }
+        }
+
+        if (tracks.length === 0) {
+            if (el) el.textContent = 'Missing reads-by-site BAM/index: ' + missing.join(' ; ');
+            console.warn('Missing reads-by-site BAM/index:', missing);
+            return;
+        }
+
+        const refUrl = CONFIG.httpBase + '/' + refPath;
+        const options = {
+            genome: 'mtDNA_edge_reads_' + edgeId,
+            reference: {
+                id: 'mtDNA_edge_reads_' + edgeId,
+                fastaURL: refUrl,
+                indexURL: refUrl + '.fai',
+            },
+            tracks,
+            showRuler: true,
+        };
+
+        await this._loadOrCreate(options);
+        this._currentView = { type: 'rollback-edge-reads', id: edgeId };
+        this._updateTitle('Rollback edge reads: ' + label + ' -> ' + (targetId || edgeId) + ' (' + candidate + ')');
+        if (el) el.textContent = missing.length ? ('Loaded, missing: ' + missing.join(' ; ')) : '';
+    },
+
+    async _rollbackEdgeReadEntries(readBase, candidate) {
+        if (candidate === 'normal') {
+            return [
+                { name: 'normal no_clip', path: readBase + '/normal/no_clip.bam', indexPath: readBase + '/normal/no_clip.bam.bai' },
+                { name: 'normal other_clip', path: readBase + '/normal/other_clip.bam', indexPath: readBase + '/normal/other_clip.bam.bai' },
+            ];
+        }
+
+        const rows = await this._fetchTsvRows(readBase + '/site_to_normal_bp_group.tsv');
+        const row = rows.find(item => item.site === candidate);
+        if (row && row.bam) {
+            const bamPath = readBase + '/' + row.bam.replace(/^normal_reads_by_site\//, '');
+            return [{
+                name: candidate + ' ' + (row.bp_group || row.bam),
+                path: bamPath,
+                indexPath: bamPath + '.bai',
+            }];
+        }
+        return [];
+    },
+
+    async _fetchTsvRows(pathValue) {
+        try {
+            const resp = await fetch(CONFIG.httpBase + '/' + pathValue);
+            if (!resp.ok) return [];
+            const text = await resp.text();
+            const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+            if (lines.length < 2) return [];
+            const headers = lines[0].split('\t');
+            return lines.slice(1).map(line => {
+                const values = line.split('\t');
+                const row = {};
+                headers.forEach((header, index) => { row[header] = values[index] || ''; });
+                return row;
+            });
+        } catch (err) {
+            console.warn('Failed to read TSV:', pathValue, err);
+            return [];
+        }
+    },
     async _urlExists(url) {
         if (!url) return false;
         try {
@@ -768,6 +912,8 @@ const IgvController = {
                     this.showNodeView(this._currentView.id);
                 } else if (this._currentView.type === 'node-coverage') {
                     this.showNodeCoverageView(this._currentView.id);
+                } else if (this._currentView.type === 'rollback-edge-reads') {
+                    this.showRollbackEdgeReadsView(this._currentView.id);
                 }
             } else {
                 // No previous view: set default height and resize

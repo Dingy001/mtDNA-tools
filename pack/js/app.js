@@ -21,6 +21,14 @@ function onNodeClick(treeItem, data) {
 
 function onEdgeClick(linkItem, data) {
     DetailPanel.showEdge(linkItem.id);
+    const edgeInfo = data.edge_info ? data.edge_info[linkItem.id] : null;
+    const sourceId = edgeInfo?.source || linkItem.source?.id || linkItem.source;
+    const edgeKind = edgeInfo?.kind || linkItem.kind;
+    const sourceNode = data._nodeById ? data._nodeById.get(sourceId) : null;
+    const isRollbackSpawn = edgeKind === 'spawn' && sourceNode && String(sourceNode.status || '').includes('CLIP_ROLLBACK_ATTEMPT');
+    if (isRollbackSpawn && typeof IgvController !== 'undefined' && typeof IgvController.showRollbackEdgeReadsView === 'function') {
+        IgvController.showRollbackEdgeReadsView(linkItem.id);
+    }
 }
 
 function onDetailOpen(info) {
