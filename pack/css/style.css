@@ -314,6 +314,91 @@ body {
 .edge-tgt { color: #059669; }
 .edge-kind { color: #6b7280; font-size: 12px; }
 
+/* ── Data Selector Overlay ── */
+#data-selector {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(15, 23, 42, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+}
+#data-selector.hidden { display: none; }
+#data-selector-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 40px 48px;
+    text-align: center;
+    max-width: 460px;
+    width: 90%;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+#data-selector-card h2 {
+    margin: 0 0 6px 0;
+    font-size: 22px;
+    color: #111827;
+}
+#data-selector-card > p {
+    margin: 0 0 4px 0;
+    font-size: 14px;
+    color: #6b7280;
+}
+#data-selector-dropzone {
+    border: 2px dashed #d1d5db;
+    border-radius: 8px;
+    padding: 36px 24px;
+    margin: 20px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    transition: border-color 0.2s, background 0.2s;
+    cursor: pointer;
+}
+#data-selector-dropzone.drag-over {
+    border-color: #2563eb;
+    background: #eff6ff;
+}
+#data-selector-dropzone span {
+    font-size: 14px;
+    color: #9ca3af;
+}
+#btn-select-file {
+    padding: 8px 24px;
+    border: 1px solid #2563eb;
+    border-radius: 6px;
+    background: #2563eb;
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+#btn-select-file:hover { background: #1d4ed8; }
+#data-selector-hint {
+    margin: 16px 0 8px 0 !important;
+    font-size: 13px !important;
+    color: #9ca3af !important;
+}
+#btn-load-default {
+    padding: 8px 28px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #fff;
+    color: #374151;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+#btn-load-default:hover { background: #f3f4f6; }
+#data-selector-status {
+    margin-top: 12px;
+    font-size: 13px;
+    color: #dc2626;
+    min-height: 20px;
+}
+
 /* ── Resizer ── */
 #resizer {
     grid-row: 4;

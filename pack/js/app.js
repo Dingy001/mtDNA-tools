@@ -360,12 +360,24 @@ let appData = null;
 
 class App {
     async init() {
+        // Show data selector instead of auto-loading
+        DataSelector.show((jsonData, label) => {
+            this.loadData(jsonData, label);
+        });
+    }
+
+    async loadData(rawData, sourceLabel) {
+        DataSelector.hide();
+
+        // Reset everything before loading new data
+        this._reset();
+
         try {
-            // 1. Load data
+            // 1. Load & process data
             document.getElementById('info-bar').textContent = 'Loading data...';
-            appData = await DataLoader.load(CONFIG.dataUrl);
+            appData = await DataLoader.loadFromObject(rawData);
             document.getElementById('info-bar').textContent =
-                `${appData.summary.node_count} nodes | ${appData.summary.edge_count} edges | ${appData.summary.path_count} paths | ${appData.summary.clip_rollback_attempt_count} rollbacks`;
+                `${sourceLabel} — ${appData.summary.node_count} nodes | ${appData.summary.edge_count} edges | ${appData.summary.path_count} paths | ${appData.summary.clip_rollback_attempt_count} rollbacks`;
 
             // 2. Layout
             const leafCount = TreeLayout.layout(appData.tree, appData);
@@ -383,22 +395,51 @@ class App {
             // 6. Detail panel
             DetailPanel.init('#detail-panel', null, appState, appData);
 
-            // 7. IGV controller (lazy, create on first use)
+            // 7. IGV controller
             IgvController.init('igv-container', appState, appData);
 
-            // 8. Fit view after the container has its final size.
+            // 8. Fit view
             requestAnimationFrame(() => TreeInteraction.fitView());
             setTimeout(() => TreeInteraction.fitView(), 120);
 
-            // IGV close button
+            // 9. IGV close button
             const igvClose = document.getElementById('igv-close');
-            if (igvClose) igvClose.addEventListener('click', () => IgvController.hide());
+            if (igvClose) {
+                const newBtn = igvClose.cloneNode(true);
+                igvClose.parentNode.replaceChild(newBtn, igvClose);
+                newBtn.addEventListener('click', () => IgvController.hide());
+            }
 
-            console.log('App initialized successfully.');
+            console.log('App initialized successfully with: ' + sourceLabel);
         } catch (err) {
             console.error('App init failed:', err);
             document.getElementById('info-bar').textContent = 'Error: ' + err.message;
         }
+    }
+
+    _reset() {
+        // Clear SVG
+        const linkGroup = d3.select('#link-group');
+        if (!linkGroup.empty()) linkGroup.selectAll('*').remove();
+        const nodeGroup = d3.select('#node-group');
+        if (!nodeGroup.empty()) nodeGroup.selectAll('*').remove();
+        const pathHL = d3.select('#path-highlight-group');
+        if (!pathHL.empty()) pathHL.remove();
+
+        // Reset global state
+        appData = null;
+        appState.selectedNodeId = null;
+        appState.selectedEdgeId = null;
+        appState.selectedPathId = null;
+        appState.roundFilter = null;
+        _highlightedNodes.clear();
+        _highlightedPathNodes.clear();
+        _highlightedPathEdges.clear();
+        _highlightedPathOverlayLinks = [];
+
+        // Close panels
+        DetailPanel.close();
+        IgvController.hide();
     }
 }
 

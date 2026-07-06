@@ -13,6 +13,23 @@
 </head>
 <body>
 
+    <!-- ========== Data Selector Overlay ========== -->
+    <div id="data-selector">
+        <div id="data-selector-card">
+            <h2>mtDNA Round Tree</h2>
+            <p>Select a tree data file to begin</p>
+            <div id="data-selector-dropzone">
+                <span>Drop a .json file here</span>
+                <span>or</span>
+                <button id="btn-select-file">Browse Files</button>
+                <input type="file" id="file-input" accept=".json" hidden>
+            </div>
+            <p id="data-selector-hint">Or load the default dataset:</p>
+            <button id="btn-load-default">tree_data.json</button>
+            <p id="data-selector-status"></p>
+        </div>
+    </div>
+
     <!-- ========== Legend ========== -->
     <div id="legend">
         <span class="legend-item">
@@ -38,6 +55,7 @@
     <!-- ========== Toolbar ========== -->
     <div id="toolbar">
         <div class="toolbar-left">
+            <button id="btn-load-data" class="btn-sm" title="Load different data">Load Data</button>
             <select id="path-filter">
                 <option value="">-- All Paths --</option>
             </select>
@@ -126,6 +144,7 @@
     <script src="js/toolbar.js?v=20260703-path-overlay"></script>
     <script src="js/igv-controller.js?v=20260703-path-overlay"></script>
     <script src="js/export.js?v=20260703-path-overlay"></script>
+    <script src="js/data-selector.js"></script>
     <script src="js/app.js?v=20260703-path-overlay"></script>
 
     <script>

@@ -96,6 +96,15 @@ const Toolbar = {
             if (typeof onIgvToggle === 'function') onIgvToggle();
         });
 
+        // --- Load Data (switch dataset) ---
+        this._bindBtn('#btn-load-data', () => {
+            if (typeof DataSelector !== 'undefined') {
+                DataSelector.show((jsonData, label) => {
+                    if (window.app) window.app.loadData(jsonData, label);
+                });
+            }
+        });
+
         // --- Export ---
         this._bindBtn('#btn-export-svg', () => {
             if (typeof exportSVG === 'function') exportSVG();

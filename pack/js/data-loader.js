@@ -11,6 +11,16 @@ const DataLoader = {
         const resp = await fetch(url);
         if (!resp.ok) throw new Error(`Failed to load data: ${resp.status} ${resp.statusText}`);
         const data = await resp.json();
+        return this.loadFromObject(data);
+    },
+
+    /**
+     * Process a pre-parsed JSON object through the same enrichment pipeline as load().
+     * @param {Object} rawData  — parsed tree data object (from FileReader, fetch, etc.)
+     * @returns {Promise<Object>} enriched data object
+     */
+    async loadFromObject(rawData) {
+        const data = rawData;
         await this._loadRoundNodeIntervals(data);
 
         // Build indices
