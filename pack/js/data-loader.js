@@ -48,6 +48,9 @@ const DataLoader = {
         // Build explicit final path <-> node mappings before labels are shortened.
         this._buildFinalPathNodeMappings(data);
 
+        // Load R_flat directory structure mapping for correct ref/BAM paths
+        await this._loadRFlatStructure(data);
+
         // Assign candidate-folder bindings before labels are shortened.
         this._assignCandidateBindings(data);
 
@@ -219,6 +222,21 @@ const DataLoader = {
             });
         }
     },
+    /** Load pre-computed R_flat directory structure mapping (R_dir + candidate→BAM names). */
+    async _loadRFlatStructure(data) {
+        data._rFlatStructure = {};
+        try {
+            const resp = await fetch('data/R_flat_structure.json');
+            if (resp.ok) {
+                data._rFlatStructure = await resp.json();
+            } else {
+                console.warn('R_flat_structure.json not loaded, using fallback paths');
+            }
+        } catch (err) {
+            console.warn('R_flat_structure.json fetch failed, using fallback paths:', err);
+        }
+    },
+
     /** Prefer CRAM/CRAI alignment files when the JSON was generated with BAM paths. */
     _preferCramAlignments(data) {
         const toCram = (value) => {
@@ -246,10 +264,12 @@ const DataLoader = {
     },
     /**
      * Build bindings for the flattened R directory index.
-     * Runtime paths mirror R_flat_mapping.tsv without fetching the TSV.
+     * Uses the pre-computed R_flat_structure.json mapping for correct
+     * ref (single R_dir per rollback) and BAM (normal_reads_by_site/{candidate}/) paths.
      */
     _buildFlatCandidateBindings(data) {
         const base = 'MH63_auto/auto_multipath_roundtree_run/R_flat';
+        const structure = data._rFlatStructure || {};
         const entries = [];
 
         for (const edge of data.edges || []) {
@@ -261,15 +281,14 @@ const DataLoader = {
             const targetNode = data._nodeById ? data._nodeById.get(targetId) : null;
             if (!rollbackMatch || !targetNode) continue;
             const round = Number(rollbackMatch[2]);
-            const rDir = this._flatRDirForNode(targetId, targetNode);
-            if (!rDir) continue;
+            const candidate = edgeInfo?.split_candidate || 'normal';
             entries.push({
                 edgeId: edge.id,
                 sourceId,
                 targetId,
                 pathId: rollbackMatch[1],
                 round,
-                rDir,
+                candidate,
             });
         }
 
@@ -295,17 +314,24 @@ const DataLoader = {
         for (const entry of entries) {
             const rollbackDir = rollbackDirBySourceId.get(entry.sourceId);
             if (!rollbackDir) continue;
-            const dir = `${base}/${rollbackDir}/${entry.rDir}`;
+            // Use actual R_dir from disk mapping (each rollback has exactly 1 R_dir for ref.fa)
+            const rbStruct = structure[rollbackDir] || {};
+            const actualRDir = rbStruct.r_dir || '';
+            // BAM basename from mapping (normal → no_clip, site_XXXX → bp_XXXXXX_R)
+            const bamBase = (rbStruct.candidates || {})[entry.candidate] || 'no_clip';
+            const refDir = actualRDir ? `${base}/${rollbackDir}/${actualRDir}` : `${base}/${rollbackDir}`;
+            const bamDir = `${base}/${rollbackDir}/normal_reads_by_site/${entry.candidate}`;
             data._flatCandidateBindingBySpawnEdgeId.set(entry.edgeId, {
                 path_id: entry.pathId,
                 round: entry.round,
+                candidate: entry.candidate,
                 rollback_dir: rollbackDir,
-                r_dir: entry.rDir,
-                dir,
-                ref_fa_url: `${dir}/ref.fa`,
-                ref_fai_url: `${dir}/ref.fa.fai`,
-                bam_url: `${dir}/strict_reads_vs_ref.bam`,
-                bam_index_url: `${dir}/strict_reads_vs_ref.bam.bai`,
+                r_dir: actualRDir,
+                dir: `${base}/${rollbackDir}`,
+                ref_fa_url: `${refDir}/ref.fa`,
+                ref_fai_url: `${refDir}/ref.fa.fai`,
+                bam_url: `${bamDir}/${bamBase}.bam`,
+                bam_index_url: `${bamDir}/${bamBase}.bam.bai`,
                 source_node_id: entry.sourceId,
                 target_node_id: entry.targetId,
             });
@@ -338,16 +364,15 @@ const DataLoader = {
             if (!flatBinding) return null;
 
             const candidate = edgeInfo?.split_candidate || 'normal';
-            const dir = flatBinding.dir;
             return {
                 path_id: rollbackNode.path_id,
                 round: rollbackNode.round,
                 candidate,
-                dir,
-                ref_fa_url: `${dir}/ref.fa`,
-                ref_fai_url: `${dir}/ref.fa.fai`,
-                bam_url: `${dir}/strict_reads_vs_ref.bam`,
-                bam_index_url: `${dir}/strict_reads_vs_ref.bam.bai`,
+                dir: flatBinding.dir,
+                ref_fa_url: flatBinding.ref_fa_url,
+                ref_fai_url: flatBinding.ref_fai_url,
+                bam_url: flatBinding.bam_url,
+                bam_index_url: flatBinding.bam_index_url,
                 r_flat_dir: flatBinding.dir,
                 r_flat_rollback_dir: flatBinding.rollback_dir || '',
                 r_flat_r_dir: flatBinding.r_dir || '',

@@ -1,0 +1,194 @@
+{
+  "rollback_R12_1": {
+    "r_dir": "R12_2_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_156544_R",
+      "site_0002": "bp_159587_R"
+    }
+  },
+  "rollback_R12_2": {
+    "r_dir": "R12_1_1_1_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_157491_R",
+      "site_0002": "bp_160621_R"
+    }
+  },
+  "rollback_R12_3": {
+    "r_dir": "R12_1_1_2_1_1_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_161162_R"
+    }
+  },
+  "rollback_R13_1": {
+    "r_dir": "R13_1_1_2_1_1_1_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_164214_R"
+    }
+  },
+  "rollback_R13_2": {
+    "r_dir": "R13_2_2_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_168780_R"
+    }
+  },
+  "rollback_R15_1": {
+    "r_dir": "R15_1_1_1_3_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_185190_R",
+      "site_0002": "bp_192687_R"
+    }
+  },
+  "rollback_R18_1": {
+    "r_dir": "R18_3_1_1_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_222589_R",
+      "site_0002": "bp_225631_R"
+    }
+  },
+  "rollback_R19_1": {
+    "r_dir": "R19_2_3_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_155718_L"
+    }
+  },
+  "rollback_R19_2": {
+    "r_dir": "R19_3_1_1_2_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_234818_R",
+      "site_0002": "bp_229510_R"
+    }
+  },
+  "rollback_R20_1": {
+    "r_dir": "R20_1_1_2_1_1_1_2_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_230510_R"
+    }
+  },
+  "rollback_R22_1": {
+    "r_dir": "R22_3_1_1_3_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_267585_R"
+    }
+  },
+  "rollback_R24_1": {
+    "r_dir": "R24_1_1_1_3_1_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_287380_R"
+    }
+  },
+  "rollback_R25_1": {
+    "r_dir": "R25_1_1_1_3_1_2_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_303746_R"
+    }
+  },
+  "rollback_R28_1": {
+    "r_dir": "R28_3_1_1_2_1_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_340414_R",
+      "site_0002": "bp_343544_R"
+    }
+  },
+  "rollback_R28_2": {
+    "r_dir": "R28_1_1_1_3_1_2_1_1_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_339735_R"
+    }
+  },
+  "rollback_R29_1": {
+    "r_dir": "R29_3_1_1_3_1_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_339471_R",
+      "site_0002": "bp_342510_R"
+    }
+  },
+  "rollback_R29_2": {
+    "r_dir": "R29_1_1_1_3_1_1_1_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_340409_R",
+      "site_0002": "bp_343444_R"
+    }
+  },
+  "rollback_R2_1": {
+    "r_dir": "R2_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_039690_R",
+      "site_0002": "bp_042824_R",
+      "site_0003": "bp_046602_R"
+    }
+  },
+  "rollback_R30_1": {
+    "r_dir": "R30_2_3_1_1_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_358560_R"
+    }
+  },
+  "rollback_R31_1": {
+    "r_dir": "R31_1_1_2_1_1_1_2_1_1_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_363212_R"
+    }
+  },
+  "rollback_R32_1": {
+    "r_dir": "R32_2_3_1_1_1_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_372780_R"
+    }
+  },
+  "rollback_R33_1": {
+    "r_dir": "R33_1_1_2_1_1_1_2_1_1_1_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_377432_R"
+    }
+  },
+  "rollback_R4_1": {
+    "r_dir": "R4_3_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_067370_R"
+    }
+  },
+  "rollback_R5_1": {
+    "r_dir": "R5_1_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_074400_R"
+    }
+  },
+  "rollback_R5_2": {
+    "r_dir": "R5_3_1_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_074879_R"
+    }
+  },
+  "rollback_R6_1": {
+    "r_dir": "R6_1_1_1",
+    "candidates": {
+      "normal": "no_clip",
+      "site_0001": "bp_085622_R"
+    }
+  }
+}

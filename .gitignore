@@ -2,7 +2,6 @@
 MH63_auto/
 pack/MH63_auto/
 pack/MH63_auto_bam_backup/
-pack/data/
 
 # Build output
 pack/dist/
