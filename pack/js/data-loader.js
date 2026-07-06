@@ -322,25 +322,23 @@ const DataLoader = {
     },
 
     /**
-     * Bind round nodes to the candidate folder that spawned their branch.
-     * R_flat is preferred, while the original paths/.../candidates/... folder is kept as fallback.
+     * Bind round nodes to the R_flat candidate folder that spawned their branch.
      * The binding is inherited by downstream round nodes until another spawn edge appears.
      */
     _assignCandidateBindings(data) {
-        const legacyBase = 'MH63_auto/auto_multipath_roundtree_run/paths';
         this._buildFlatCandidateBindings(data);
 
         const makeBinding = (rollbackNode, edgeInfo, edgeId) => {
             if (!rollbackNode || !rollbackNode.path_id || rollbackNode.round === undefined || rollbackNode.round === null) {
                 return null;
             }
-            const candidate = edgeInfo?.split_candidate || 'normal';
-            const roundStr = 'round_' + String(rollbackNode.round).padStart(2, '0');
-            const legacyDir = `${legacyBase}/${rollbackNode.path_id}/${roundStr}/candidates/${candidate}`;
             const flatBinding = data._flatCandidateBindingBySpawnEdgeId
                 ? data._flatCandidateBindingBySpawnEdgeId.get(edgeId)
                 : null;
-            const dir = flatBinding?.dir || legacyDir;
+            if (!flatBinding) return null;
+
+            const candidate = edgeInfo?.split_candidate || 'normal';
+            const dir = flatBinding.dir;
             return {
                 path_id: rollbackNode.path_id,
                 round: rollbackNode.round,
@@ -350,14 +348,9 @@ const DataLoader = {
                 ref_fai_url: `${dir}/ref.fa.fai`,
                 bam_url: `${dir}/strict_reads_vs_ref.bam`,
                 bam_index_url: `${dir}/strict_reads_vs_ref.bam.bai`,
-                legacy_dir: legacyDir,
-                legacy_ref_fa_url: `${legacyDir}/ref.fa`,
-                legacy_ref_fai_url: `${legacyDir}/ref.fa.fai`,
-                legacy_bam_url: `${legacyDir}/strict_reads_vs_ref.bam`,
-                legacy_bam_index_url: `${legacyDir}/strict_reads_vs_ref.bam.bai`,
-                r_flat_dir: flatBinding?.dir || '',
-                r_flat_rollback_dir: flatBinding?.rollback_dir || '',
-                r_flat_r_dir: flatBinding?.r_dir || '',
+                r_flat_dir: flatBinding.dir,
+                r_flat_rollback_dir: flatBinding.rollback_dir || '',
+                r_flat_r_dir: flatBinding.r_dir || '',
                 source_node_id: rollbackNode.id,
             };
         };

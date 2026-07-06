@@ -314,13 +314,9 @@ const IgvController = {
         const binding = node.candidate_binding || null;
         const refPath = await this._resolveReferencePath([
             binding?.ref_fa_url,
-            binding?.legacy_ref_fa_url,
-            node.urls?.ref_fa,
         ]);
         const alignmentCandidates = this._alignmentCandidates([
             { path: binding?.bam_url, indexPath: binding?.bam_index_url },
-            { path: binding?.legacy_bam_url, indexPath: binding?.legacy_bam_index_url },
-            { path: node.urls?.bam_files?.[0] },
         ]);
 
         if (!refPath || alignmentCandidates.length === 0) {
@@ -389,8 +385,6 @@ const IgvController = {
             return;
         }
 
-        const roundStr = 'round_' + String(round).padStart(2, '0');
-        const legacyNormalDir = 'MH63_auto/auto_multipath_roundtree_run/paths/' + pathId + '/' + roundStr + '/candidates/normal';
         const normalSpawnEdge = (this._data._edgesBySource.get(clipNodeId) || []).find(edge => {
             const edgeInfo = this._data.edge_info ? this._data.edge_info[edge.id] : null;
             return (edgeInfo?.kind || edge.kind) === 'spawn' && (edgeInfo?.split_candidate || 'normal') === 'normal';
@@ -400,15 +394,13 @@ const IgvController = {
             : null;
         const refPath = await this._resolveReferencePath([
             flatNormalBinding?.ref_fa_url,
-            legacyNormalDir + '/ref.fa',
         ]);
         const alignmentCandidates = this._alignmentCandidates([
             { path: flatNormalBinding?.bam_url, indexPath: flatNormalBinding?.bam_index_url },
-            { path: legacyNormalDir + '/strict_reads_vs_ref.bam', indexPath: legacyNormalDir + '/strict_reads_vs_ref.bam.bai' },
         ]);
         const alignment = await this._resolveAlignmentResource(alignmentCandidates);
-        if (!refPath || !alignment) {
-            if (el) el.textContent = `Missing clip reference/alignment files: ${alignmentCandidates[0]?.path || legacyNormalDir}`;
+        if (!flatNormalBinding || !refPath || !alignment) {
+            if (el) el.textContent = `Missing R_flat clip reference/alignment files: ${alignmentCandidates[0]?.path || clipNodeId}`;
             return;
         }
 
