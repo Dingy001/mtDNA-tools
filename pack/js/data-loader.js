@@ -245,20 +245,102 @@ const DataLoader = {
         });
     },
     /**
+     * Build bindings for the flattened R directory index.
+     * Runtime paths mirror R_flat_mapping.tsv without fetching the TSV.
+     */
+    _buildFlatCandidateBindings(data) {
+        const base = 'MH63_auto/auto_multipath_roundtree_run/R_flat';
+        const entries = [];
+
+        for (const edge of data.edges || []) {
+            const edgeInfo = data.edge_info ? data.edge_info[edge.id] : null;
+            if ((edgeInfo?.kind || edge.kind) !== 'spawn') continue;
+            const sourceId = edgeInfo?.source || edge.source;
+            const targetId = edgeInfo?.target || edge.target;
+            const rollbackMatch = String(sourceId || '').match(/^clip_rollback_attempt__(path_\d+)__r(\d+)$/);
+            const targetNode = data._nodeById ? data._nodeById.get(targetId) : null;
+            if (!rollbackMatch || !targetNode) continue;
+            const round = Number(rollbackMatch[2]);
+            const rDir = this._flatRDirForNode(targetId, targetNode);
+            if (!rDir) continue;
+            entries.push({
+                edgeId: edge.id,
+                sourceId,
+                targetId,
+                pathId: rollbackMatch[1],
+                round,
+                rDir,
+            });
+        }
+
+        const rollbackKeys = [];
+        const seenSources = new Set();
+        entries.forEach(entry => {
+            if (seenSources.has(entry.sourceId)) return;
+            seenSources.add(entry.sourceId);
+            rollbackKeys.push({ sourceId: entry.sourceId, round: entry.round });
+        });
+        rollbackKeys.sort((a, b) => a.round - b.round || String(a.sourceId).localeCompare(String(b.sourceId)));
+
+        const roundCounters = new Map();
+        const rollbackDirBySourceId = new Map();
+        rollbackKeys.forEach(entry => {
+            const next = (roundCounters.get(entry.round) || 0) + 1;
+            roundCounters.set(entry.round, next);
+            rollbackDirBySourceId.set(entry.sourceId, `rollback_R${entry.round}_${next}`);
+        });
+
+        data._flatCandidateBindingBySpawnEdgeId = new Map();
+        data._flatRollbackDirBySourceId = rollbackDirBySourceId;
+        for (const entry of entries) {
+            const rollbackDir = rollbackDirBySourceId.get(entry.sourceId);
+            if (!rollbackDir) continue;
+            const dir = `${base}/${rollbackDir}/${entry.rDir}`;
+            data._flatCandidateBindingBySpawnEdgeId.set(entry.edgeId, {
+                path_id: entry.pathId,
+                round: entry.round,
+                rollback_dir: rollbackDir,
+                r_dir: entry.rDir,
+                dir,
+                ref_fa_url: `${dir}/ref.fa`,
+                ref_fai_url: `${dir}/ref.fa.fai`,
+                bam_url: `${dir}/strict_reads_vs_ref.bam`,
+                bam_index_url: `${dir}/strict_reads_vs_ref.bam.bai`,
+                source_node_id: entry.sourceId,
+                target_node_id: entry.targetId,
+            });
+        }
+    },
+
+    _flatRDirForNode(nodeId, node) {
+        const roundValue = node && node.round !== undefined && node.round !== null
+            ? Number(node.round)
+            : Number((String(nodeId || '').match(/^round_(\d+)/) || [])[1]);
+        if (!Number.isFinite(roundValue)) return '';
+        const suffix = String(nodeId || '').replace(/^round_\d+_?/, '');
+        return suffix ? `R${roundValue}_${suffix}` : `R${roundValue}`;
+    },
+
+    /**
      * Bind round nodes to the candidate folder that spawned their branch.
-     * A spawn edge from a rollback node defines:
-     * paths/{rollback.path_id}/round_XX/candidates/{split_candidate}/
+     * R_flat is preferred, while the original paths/.../candidates/... folder is kept as fallback.
      * The binding is inherited by downstream round nodes until another spawn edge appears.
      */
     _assignCandidateBindings(data) {
-        const base = 'MH63_auto/auto_multipath_roundtree_run/paths';
-        const makeBinding = (rollbackNode, edgeInfo) => {
+        const legacyBase = 'MH63_auto/auto_multipath_roundtree_run/paths';
+        this._buildFlatCandidateBindings(data);
+
+        const makeBinding = (rollbackNode, edgeInfo, edgeId) => {
             if (!rollbackNode || !rollbackNode.path_id || rollbackNode.round === undefined || rollbackNode.round === null) {
                 return null;
             }
             const candidate = edgeInfo?.split_candidate || 'normal';
             const roundStr = 'round_' + String(rollbackNode.round).padStart(2, '0');
-            const dir = `${base}/${rollbackNode.path_id}/${roundStr}/candidates/${candidate}`;
+            const legacyDir = `${legacyBase}/${rollbackNode.path_id}/${roundStr}/candidates/${candidate}`;
+            const flatBinding = data._flatCandidateBindingBySpawnEdgeId
+                ? data._flatCandidateBindingBySpawnEdgeId.get(edgeId)
+                : null;
+            const dir = flatBinding?.dir || legacyDir;
             return {
                 path_id: rollbackNode.path_id,
                 round: rollbackNode.round,
@@ -268,6 +350,14 @@ const DataLoader = {
                 ref_fai_url: `${dir}/ref.fa.fai`,
                 bam_url: `${dir}/strict_reads_vs_ref.bam`,
                 bam_index_url: `${dir}/strict_reads_vs_ref.bam.bai`,
+                legacy_dir: legacyDir,
+                legacy_ref_fa_url: `${legacyDir}/ref.fa`,
+                legacy_ref_fai_url: `${legacyDir}/ref.fa.fai`,
+                legacy_bam_url: `${legacyDir}/strict_reads_vs_ref.bam`,
+                legacy_bam_index_url: `${legacyDir}/strict_reads_vs_ref.bam.bai`,
+                r_flat_dir: flatBinding?.dir || '',
+                r_flat_rollback_dir: flatBinding?.rollback_dir || '',
+                r_flat_r_dir: flatBinding?.r_dir || '',
                 source_node_id: rollbackNode.id,
             };
         };
@@ -291,7 +381,7 @@ const DataLoader = {
                 const parentNode = data._nodeById.get(treeNode.id);
                 let childBinding = inheritedBinding;
                 if ((edgeInfo?.kind || edge?.kind) === 'spawn') {
-                    childBinding = makeBinding(parentNode, edgeInfo);
+                    childBinding = makeBinding(parentNode, edgeInfo, edgeId);
                 }
                 walk(child, childBinding);
             }

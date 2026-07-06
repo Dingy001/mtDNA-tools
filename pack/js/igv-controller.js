@@ -312,13 +312,18 @@ const IgvController = {
         }
 
         const binding = node.candidate_binding || null;
-        const refPath = binding?.ref_fa_url || node.urls?.ref_fa;
-        const bamPath = binding?.bam_url || node.urls?.bam_files?.[0];
-        const baiPath = binding?.bam_index_url || (bamPath ? defaultAlignmentIndex(bamPath) : null);
-        const cramPath = bamPath ? bamPath.replace(/\.bam$/i, '.cram') : '';
-        const cramIndexPath = cramPath ? cramPath + '.crai' : '';
+        const refPath = await this._resolveReferencePath([
+            binding?.ref_fa_url,
+            binding?.legacy_ref_fa_url,
+            node.urls?.ref_fa,
+        ]);
+        const alignmentCandidates = this._alignmentCandidates([
+            { path: binding?.bam_url, indexPath: binding?.bam_index_url },
+            { path: binding?.legacy_bam_url, indexPath: binding?.legacy_bam_index_url },
+            { path: node.urls?.bam_files?.[0] },
+        ]);
 
-        if (!refPath || !bamPath) {
+        if (!refPath || alignmentCandidates.length === 0) {
             console.warn('No candidate/ref/BAM binding for node:', nodeId, node);
             if (el) el.textContent = 'No candidate/ref/BAM binding for this node';
             return;
@@ -330,12 +335,9 @@ const IgvController = {
         this._currentView = { type: 'node', id: nodeId };
         this._updateTitle(title);
 
-        const alignment = await this._resolveAlignmentResource([
-            { path: bamPath, indexPath: baiPath },
-            { path: cramPath, indexPath: cramIndexPath },
-        ]);
+        const alignment = await this._resolveAlignmentResource(alignmentCandidates);
         if (!alignment) {
-            if (el) el.textContent = `Missing node alignment files: ${bamPath}`;
+            if (el) el.textContent = `Missing node alignment files: ${alignmentCandidates[0]?.path || ''}`;
             return;
         }
 
@@ -345,7 +347,7 @@ const IgvController = {
             reference: {
                 id: 'mtDNA_node_' + nodeId,
                 fastaURL: refUrl,
-                indexURL: binding?.ref_fai_url ? CONFIG.httpBase + '/' + binding.ref_fai_url : refUrl + '.fai',
+                indexURL: refUrl + '.fai',
             },
             tracks: [{
                 name: binding
@@ -387,23 +389,30 @@ const IgvController = {
             return;
         }
 
-        // Build path: paths/{path_id}/round_{round_XX}/candidates/normal/
         const roundStr = 'round_' + String(round).padStart(2, '0');
-        const normalDir = 'MH63_auto/auto_multipath_roundtree_run/paths/' + pathId + '/' + roundStr + '/candidates/normal';
-        const refUrl = CONFIG.httpBase + '/' + normalDir + '/ref.fa';
-        const bamPath = normalDir + '/strict_reads_vs_ref.bam';
-        const baiPath = bamPath + '.bai';
-        const cramPath = normalDir + '/strict_reads_vs_ref.cram';
-        const cramIndexPath = cramPath + '.crai';
-        const alignment = await this._resolveAlignmentResource([
-            { path: bamPath, indexPath: baiPath },
-            { path: cramPath, indexPath: cramIndexPath },
+        const legacyNormalDir = 'MH63_auto/auto_multipath_roundtree_run/paths/' + pathId + '/' + roundStr + '/candidates/normal';
+        const normalSpawnEdge = (this._data._edgesBySource.get(clipNodeId) || []).find(edge => {
+            const edgeInfo = this._data.edge_info ? this._data.edge_info[edge.id] : null;
+            return (edgeInfo?.kind || edge.kind) === 'spawn' && (edgeInfo?.split_candidate || 'normal') === 'normal';
+        });
+        const flatNormalBinding = normalSpawnEdge && this._data._flatCandidateBindingBySpawnEdgeId
+            ? this._data._flatCandidateBindingBySpawnEdgeId.get(normalSpawnEdge.id)
+            : null;
+        const refPath = await this._resolveReferencePath([
+            flatNormalBinding?.ref_fa_url,
+            legacyNormalDir + '/ref.fa',
         ]);
-        if (!alignment) {
-            if (el) el.textContent = `Missing clip alignment files: ${bamPath}`;
+        const alignmentCandidates = this._alignmentCandidates([
+            { path: flatNormalBinding?.bam_url, indexPath: flatNormalBinding?.bam_index_url },
+            { path: legacyNormalDir + '/strict_reads_vs_ref.bam', indexPath: legacyNormalDir + '/strict_reads_vs_ref.bam.bai' },
+        ]);
+        const alignment = await this._resolveAlignmentResource(alignmentCandidates);
+        if (!refPath || !alignment) {
+            if (el) el.textContent = `Missing clip reference/alignment files: ${alignmentCandidates[0]?.path || legacyNormalDir}`;
             return;
         }
 
+        const refUrl = CONFIG.httpBase + '/' + refPath;
         const options = {
             genome: 'mtDNA_clip_' + clipNodeId,
             reference: {
@@ -439,6 +448,44 @@ const IgvController = {
         }
     },
 
+    _alignmentCandidates(entries) {
+        const candidates = [];
+        const seen = new Set();
+        const add = (pathValue, indexPathValue) => {
+            if (!pathValue || seen.has(pathValue)) return;
+            seen.add(pathValue);
+            candidates.push({
+                path: pathValue,
+                indexPath: indexPathValue || defaultAlignmentIndex(pathValue),
+            });
+        };
+
+        for (const entry of entries || []) {
+            if (!entry || !entry.path) continue;
+            add(entry.path, entry.indexPath);
+            if (/\.bam$/i.test(entry.path)) {
+                const cramPath = entry.path.replace(/\.bam$/i, '.cram');
+                add(cramPath, cramPath + '.crai');
+            }
+        }
+        return candidates;
+    },
+
+    async _resolveReferencePath(paths) {
+        const seen = new Set();
+        for (const pathValue of paths || []) {
+            if (!pathValue || seen.has(pathValue)) continue;
+            seen.add(pathValue);
+            const url = CONFIG.httpBase + '/' + pathValue;
+            const indexURL = url + '.fai';
+            const [hasRef, hasIndex] = await Promise.all([
+                this._urlExists(url),
+                this._urlExists(indexURL),
+            ]);
+            if (hasRef && hasIndex) return pathValue;
+        }
+        return '';
+    },
     async _resolveAlignmentResource(candidates) {
         for (const candidate of candidates) {
             if (!candidate || !candidate.path || !candidate.indexPath) continue;
