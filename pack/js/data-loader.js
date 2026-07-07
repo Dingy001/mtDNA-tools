@@ -376,64 +376,12 @@ const DataLoader = {
     },
 
     /**
-     * Bind round nodes to the R_flat candidate folder that spawned their branch.
-     * The binding is inherited by downstream round nodes until another spawn edge appears.
+     * Build R_flat candidate bindings for rollback spawn edges.
+     * These bindings describe the branch edge evidence, not the target node output.
      */
     _assignCandidateBindings(data) {
         this._buildFlatCandidateBindings(data);
-
-        const makeBinding = (rollbackNode, edgeInfo, edgeId) => {
-            if (!rollbackNode || !rollbackNode.path_id || rollbackNode.round === undefined || rollbackNode.round === null) {
-                return null;
-            }
-            const flatBinding = data._flatCandidateBindingBySpawnEdgeId
-                ? data._flatCandidateBindingBySpawnEdgeId.get(edgeId)
-                : null;
-            if (!flatBinding) return null;
-
-            const candidate = edgeInfo?.split_candidate || 'normal';
-            return {
-                path_id: rollbackNode.path_id,
-                round: rollbackNode.round,
-                candidate,
-                dir: flatBinding.dir,
-                ref_fa_url: flatBinding.ref_fa_url,
-                ref_fai_url: flatBinding.ref_fai_url,
-                bam_url: flatBinding.bam_url,
-                bam_index_url: flatBinding.bam_index_url,
-                r_flat_dir: flatBinding.dir,
-                r_flat_rollback_dir: flatBinding.rollback_dir || '',
-                r_flat_r_dir: flatBinding.r_dir || '',
-                source_node_id: rollbackNode.id,
-            };
-        };
-
-        const walk = (treeNode, inheritedBinding) => {
-            const node = data._nodeById.get(treeNode.id);
-            if (node && inheritedBinding && !String(node.status || '').includes('CLIP_ROLLBACK_ATTEMPT')) {
-                node.candidate_binding = inheritedBinding;
-                node.urls = node.urls || {};
-                node.urls.candidate_dir = inheritedBinding.dir;
-                node.urls.ref_fa = inheritedBinding.ref_fa_url;
-                node.urls.final_dir = inheritedBinding.dir;
-                node.urls.bam_files = [inheritedBinding.bam_url];
-            }
-
-            if (!treeNode.children) return;
-            for (const child of treeNode.children) {
-                const edgeId = `${treeNode.id}__TO__${child.id}`;
-                const edgeInfo = data.edge_info ? data.edge_info[edgeId] : null;
-                const edge = data._edgeById.get(edgeId);
-                const parentNode = data._nodeById.get(treeNode.id);
-                let childBinding = inheritedBinding;
-                if ((edgeInfo?.kind || edge?.kind) === 'spawn') {
-                    childBinding = makeBinding(parentNode, edgeInfo, edgeId);
-                }
-                walk(child, childBinding);
-            }
-        };
-
-        walk(data.tree, null);
+        data._edgeCandidateBindingById = data._flatCandidateBindingBySpawnEdgeId || new Map();
     },
     /**
      * Generate short display labels: R{round}_{idx} for normal nodes,

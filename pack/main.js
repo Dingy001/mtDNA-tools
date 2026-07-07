@@ -142,7 +142,13 @@ function dataRoots() {
         if (!roots.includes(normalized)) roots.push(normalized);
     };
 
-    addRoot(findRunDir(dataDir) || dataDir);
+    const runDir = findRunDir(dataDir);
+    addRoot(runDir || dataDir);
+    if (runDir) {
+        const mh63Dir = path.dirname(runDir);
+        addRoot(mh63Dir);
+        addRoot(path.dirname(mh63Dir));
+    }
     addRoot(staticRoot);
     addRoot(resourceRoot);
     addRoot(path.dirname(process.execPath || ''));
@@ -307,7 +313,7 @@ async function selectDataDir() {
     const result = await dialog.showOpenDialog(mainWindow || undefined, {
         title: 'Select Data Directory',
         properties: ['openDirectory'],
-        message: 'Select the mtDNA data root folder\n(containing auto_multipath_roundtree_run/tree_data.json)'
+        message: 'Select the mtDNA data package folder\n(containing tree_data.json/path_tree.json and auto_multipath_roundtree_run)'
     });
     if (!result.canceled && result.filePaths.length > 0) {
         const selectedRunDir = findRunDir(result.filePaths[0]);
@@ -323,7 +329,7 @@ async function selectDataDir() {
         dataDir = selectedRunDir;
         saveDataDir(dataDir);
         if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.reload();
+            mainWindow.webContents.send('data-dir-selected', dataDir);
         }
     }
     return dataDir;
@@ -385,9 +391,6 @@ function createWindow(port) {
 
 app.whenReady().then(async () => {
     dataDir = loadDataDir();
-    if (!dataDir) {
-        await selectDataDir();
-    }
     const { port } = await createServer();
     httpPort = port;
     createWindow(port);
@@ -409,11 +412,3 @@ ipcMain.handle('select-data-dir', async () => {
 });
 ipcMain.handle('get-data-dir', () => dataDir);
 ipcMain.handle('get-http-port', () => httpPort);
-
-
-
-
-
-
-
-

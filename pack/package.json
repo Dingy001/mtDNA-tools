@@ -17,7 +17,7 @@
       "index.html",
       "js/**",
       "css/**",
-      "tree_data.json",
+      "MH63_auto/**",
       "vendor/**",
       "data/**"
     ],

@@ -20,4 +20,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     selectDataDir: () => ipcRenderer.invoke('select-data-dir'),
     getDataDir: () => ipcRenderer.invoke('get-data-dir'),
     getHttpPort: () => ipcRenderer.invoke('get-http-port'),
+    onDataDirSelected: (callback) => {
+        ipcRenderer.removeAllListeners('data-dir-selected');
+        ipcRenderer.on('data-dir-selected', (_event, dir) => callback(dir));
+    },
 });

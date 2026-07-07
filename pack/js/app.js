@@ -78,6 +78,10 @@ function onIgvClipView(nodeId) {
     IgvController.showClipView(nodeId);
 }
 
+function onIgvRollbackEdgeView(edgeId) {
+    IgvController.showRollbackEdgeReadsView(edgeId);
+}
+
 function onIgvToggle() {
     IgvController.toggle();
 }
@@ -120,33 +124,42 @@ function applyPathHighlight(pathId) {
         return;
     }
 
+    const mapping = _mappingForPathHighlight(pathId);
     const pathNodeIds = _pathNodeSequenceForHighlight(pathId);
-    if (!pathNodeIds || pathNodeIds.length === 0) {
+    if ((!pathNodeIds || pathNodeIds.length === 0) && (!mapping || !Array.isArray(mapping.edge_ids))) {
         _applyNodeStyles();
         return;
     }
 
-    pathNodeIds.forEach(nodeId => _highlightedPathNodes.add(nodeId));
+    const expandedPathNodeIds = _expandPathNodeSequence(pathNodeIds || []);
+    const pathEdgeIds = _edgeIdsForPathHighlight(mapping, expandedPathNodeIds);
 
-    for (let i = 0; i < pathNodeIds.length - 1; i++) {
-        const sourceId = pathNodeIds[i];
-        const targetId = pathNodeIds[i + 1];
-        _highlightedPathEdges.add(sourceId + '__TO__' + targetId);
-        _addPathOverlayLink(sourceId, targetId, i);
-    }
+    expandedPathNodeIds.forEach(nodeId => _highlightedPathNodes.add(nodeId));
+    pathEdgeIds.forEach((edgeId, index) => {
+        _highlightedPathEdges.add(edgeId);
+        const endpoints = _edgeEndpoints(edgeId);
+        if (!endpoints) return;
+        _highlightedPathNodes.add(endpoints.source);
+        _highlightedPathNodes.add(endpoints.target);
+        _addPathOverlayLink(endpoints.source, endpoints.target, index);
+    });
 
     _applyNodeStyles();
 }
 
-function _pathNodeSequenceForHighlight(pathId) {
-    const mapping = Array.isArray(appData.final_path_node_mappings)
+function _mappingForPathHighlight(pathId) {
+    return Array.isArray(appData.final_path_node_mappings)
         ? appData.final_path_node_mappings.find(p => p.final_path === pathId)
         : null;
+}
+
+function _pathNodeSequenceForHighlight(pathId) {
+    const mapping = _mappingForPathHighlight(pathId);
     if (mapping) {
-        const rawNodeIds = Array.isArray(mapping.raw_node_ids) ? mapping.raw_node_ids.filter(Boolean) : [];
-        if (rawNodeIds.length > 0) return rawNodeIds;
         const nodeIds = Array.isArray(mapping.node_ids) ? mapping.node_ids.filter(Boolean) : [];
         if (nodeIds.length > 0) return nodeIds;
+        const rawNodeIds = Array.isArray(mapping.raw_node_ids) ? mapping.raw_node_ids.filter(Boolean) : [];
+        if (rawNodeIds.length > 0) return rawNodeIds;
     }
 
     const mappedNodeIds = appData._finalPathNodeIdsById ? appData._finalPathNodeIdsById.get(pathId) : null;
@@ -154,6 +167,53 @@ function _pathNodeSequenceForHighlight(pathId) {
 
     const fpData = appData.final_paths_igv ? appData.final_paths_igv.find(p => p.final_path === pathId) : null;
     return fpData ? fpData.rounds.map(r => r.node_id).filter(Boolean) : [];
+}
+
+function _expandPathNodeSequence(nodeIds) {
+    const expanded = [];
+    for (let i = 0; i < nodeIds.length; i++) {
+        if (i === 0) {
+            expanded.push(nodeIds[i]);
+            continue;
+        }
+        const segment = _findTreePath(nodeIds[i - 1], nodeIds[i]);
+        if (segment && segment.length > 0) {
+            const startIndex = expanded.length > 0 ? 1 : 0;
+            for (let j = startIndex; j < segment.length; j++) expanded.push(segment[j]);
+        } else {
+            expanded.push(nodeIds[i]);
+        }
+    }
+    return expanded;
+}
+
+function _edgeIdsForPathHighlight(mapping, expandedNodeIds) {
+    const out = [];
+    const seen = new Set();
+    const add = (edgeId) => {
+        if (!edgeId || seen.has(edgeId)) return;
+        if (appData._edgeById && !appData._edgeById.has(edgeId)) return;
+        seen.add(edgeId);
+        out.push(edgeId);
+    };
+
+    if (mapping && Array.isArray(mapping.edge_ids)) {
+        mapping.edge_ids.forEach(add);
+    }
+
+    for (let i = 0; i < expandedNodeIds.length - 1; i++) {
+        add(expandedNodeIds[i] + '__TO__' + expandedNodeIds[i + 1]);
+    }
+    return out;
+}
+
+function _edgeEndpoints(edgeId) {
+    const edge = appData._edgeById ? appData._edgeById.get(edgeId) : null;
+    const edgeInfo = appData.edge_info ? appData.edge_info[edgeId] : null;
+    const source = edgeInfo?.source || edge?.source;
+    const target = edgeInfo?.target || edge?.target;
+    if (!source || !target) return null;
+    return { source, target };
 }
 function _addPathSegmentHighlight(segment) {
     if (!segment || segment.length === 0) return;
@@ -360,10 +420,43 @@ let appData = null;
 
 class App {
     async init() {
-        // Show data selector instead of auto-loading
-        DataSelector.show((jsonData, label) => {
-            this.loadData(jsonData, label);
-        });
+        DataSelector.hide();
+        const info = document.getElementById('info-bar');
+        if (info) info.textContent = 'Use File > Open Data Directory... to load an mtDNA data package';
+
+        if (window.electronAPI && typeof window.electronAPI.onDataDirSelected === 'function') {
+            window.electronAPI.onDataDirSelected(() => {
+                this.loadDataPackage();
+            });
+        }
+    }
+
+
+    async loadDataPackage() {
+        const info = document.getElementById('info-bar');
+        const candidates = [
+            CONFIG.dataUrl,
+            'tree_data.json',
+            'MH63_auto/path_tree.json',
+            'path_tree.json',
+        ].filter(Boolean);
+        const errors = [];
+
+        for (const url of candidates) {
+            try {
+                if (info) info.textContent = 'Loading ' + url + '...';
+                const resp = await fetch(url);
+                if (!resp.ok) throw new Error(resp.status + ' ' + resp.statusText);
+                const rawData = await resp.json();
+                await this.loadData(rawData, url);
+                return;
+            } catch (err) {
+                errors.push(url + ': ' + err.message);
+            }
+        }
+
+        if (info) info.textContent = 'No tree data found in selected data directory';
+        console.error('Data package load failed:', errors);
     }
 
     async loadData(rawData, sourceLabel) {
@@ -437,27 +530,8 @@ class App {
         _highlightedPathEdges.clear();
         _highlightedPathOverlayLinks = [];
 
-        // Close panels
-        DetailPanel.close();
-        IgvController.hide();
+        // Close panels if they have already been initialized.
+        if (DetailPanel._panel) DetailPanel.close();
+        if (IgvController._container) IgvController.hide();
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -14,7 +14,7 @@
 <body>
 
     <!-- ========== Data Selector Overlay ========== -->
-    <div id="data-selector">
+    <div id="data-selector" class="hidden">
         <div id="data-selector-card">
             <h2>mtDNA Round Tree</h2>
             <p>Select a tree data file to begin</p>
@@ -25,7 +25,7 @@
                 <input type="file" id="file-input" accept=".json" hidden>
             </div>
             <p id="data-selector-hint">Or load the default dataset:</p>
-            <button id="btn-load-default">tree_data.json</button>
+            <button id="btn-load-default">Default tree data</button>
             <p id="data-selector-status"></p>
         </div>
     </div>
@@ -55,7 +55,6 @@
     <!-- ========== Toolbar ========== -->
     <div id="toolbar">
         <div class="toolbar-left">
-            <button id="btn-load-data" class="btn-sm" title="Load different data">Load Data</button>
             <select id="path-filter">
                 <option value="">-- All Paths --</option>
             </select>
@@ -136,16 +135,16 @@
 
     <!-- ========== JS modules (dependency order) ========== -->
     <script src="js/config.js?v=20260703-path-overlay"></script>
-    <script src="js/data-loader.js?v=20260703-path-overlay"></script>
+    <script src="js/data-loader.js?v=20260707-edge-candidates"></script>
     <script src="js/layout.js?v=20260703-path-overlay"></script>
     <script src="js/render.js?v=20260703-path-overlay"></script>
     <script src="js/interaction.js?v=20260703-path-overlay"></script>
-    <script src="js/detail-panel.js?v=20260703-path-overlay"></script>
+    <script src="js/detail-panel.js?v=20260707-edge-candidates"></script>
     <script src="js/toolbar.js?v=20260703-path-overlay"></script>
     <script src="js/igv-controller.js?v=20260703-path-overlay"></script>
     <script src="js/export.js?v=20260703-path-overlay"></script>
     <script src="js/data-selector.js"></script>
-    <script src="js/app.js?v=20260703-path-overlay"></script>
+    <script src="js/app.js?v=20260707-edge-candidates"></script>
 
     <script>
         // Launch application
@@ -159,5 +158,3 @@
     </script>
 </body>
 </html>
-
-

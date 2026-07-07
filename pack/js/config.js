@@ -3,7 +3,7 @@
  */
 const CONFIG = {
     // --- Data source ---
-    dataUrl: 'tree_data.json',
+    dataUrl: 'MH63_auto/tree_data.json',
     nodeIntervalUrl: 'data/unique_round_node_intervals.json',
     httpBase: (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.httpBase)
         ? window.electronAPI.httpBase
@@ -72,8 +72,3 @@ const CONFIG = {
     // Label truncation: max length before ellipsis
     maxLabelLen: 22,
 };
-
-
-
-
-

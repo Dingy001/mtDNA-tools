@@ -48,11 +48,13 @@ const DataSelector = {
         // Default dataset button
         const defaultBtn = document.getElementById('btn-load-default');
         if (defaultBtn) {
+            const defaultUrl = (typeof CONFIG !== 'undefined' && CONFIG.dataUrl) ? CONFIG.dataUrl : 'MH63_auto/tree_data.json';
+            defaultBtn.textContent = defaultUrl;
             defaultBtn.onclick = () => {
-                const label = 'tree_data.json';
+                const label = defaultUrl;
                 const statusEl = document.getElementById('data-selector-status');
                 if (statusEl) statusEl.textContent = 'Loading ' + label + '...';
-                fetch('tree_data.json')
+                fetch(defaultUrl)
                     .then(r => {
                         if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
                         return r.json();

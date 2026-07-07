@@ -141,12 +141,15 @@ const DetailPanel = {
             }
 
             // IGV actions
+            const hasNodeIgvResource = !!(node.candidate_binding && node.candidate_binding.ref_fa_url && node.candidate_binding.bam_url);
             html += `<div class="detail-section">
                 <div class="detail-section-title">IGV Actions</div>
-                <div class="btn-group">
-                <button class="btn btn-igv" data-action="igv-node" data-node-id="${this._esc(node.id)}">View this round in IGV</button>
-                <button class="btn btn-igv" data-action="highlight-node" data-node-id="${this._esc(node.id)}">Highlight &amp; center node</button>
-                </div></div>`;
+                <div class="btn-group">`;
+            if (hasNodeIgvResource) {
+                html += `<button class="btn btn-igv" data-action="igv-node" data-node-id="${this._esc(node.id)}">View this round in IGV</button>`;
+            }
+            html += `<button class="btn btn-igv" data-action="highlight-node" data-node-id="${this._esc(node.id)}">Highlight &amp; center node</button>`;
+            html += `</div></div>`;
         }
 
         if (contentEl) contentEl.innerHTML = html;
@@ -171,7 +174,10 @@ const DetailPanel = {
         if (titleEl) titleEl.textContent = 'Edge Detail';
 
         const targetNode = this._data._nodeById.get(edge.target);
+        const sourceNode = this._data._nodeById.get(edge.source);
         const targetIsRollback = targetNode && String(targetNode.status || '').includes('CLIP_ROLLBACK_ATTEMPT');
+        const isRollbackSpawn = (edge.kind || einfo.kind) === 'spawn' && sourceNode && String(sourceNode.status || '').includes('CLIP_ROLLBACK_ATTEMPT');
+        const targetHasNodeIgvResource = !!(targetNode && targetNode.candidate_binding && targetNode.candidate_binding.ref_fa_url && targetNode.candidate_binding.bam_url);
         const sourceLabel = einfo.source_label || edge.source;
         const targetLabel = einfo.target_label || edge.target;
         const kindLabel = edge.kind || einfo.kind || '';
@@ -197,7 +203,12 @@ const DetailPanel = {
         html += `<div class="detail-section">
             <div class="detail-section-title">IGV Actions</div>
             <div class="btn-group">`;
-        html += `<button class="btn btn-igv" data-action="igv-node" data-node-id="${this._esc(edge.target)}">View target node in IGV</button>`;
+        if (isRollbackSpawn) {
+            html += `<button class="btn btn-igv" data-action="igv-rollback-edge" data-edge-id="${this._esc(edge.id)}">View branch reads in IGV</button>`;
+        }
+        if (targetHasNodeIgvResource) {
+            html += `<button class="btn btn-igv" data-action="igv-node" data-node-id="${this._esc(edge.target)}">View target node in IGV</button>`;
+        }
         if (!targetIsRollback && targetNode && (targetNode.round_node_interval || (this._data._roundNodeIntervalById && this._data._roundNodeIntervalById.has(edge.target)))) {
             html += `<button class="btn btn-igv" data-action="igv-node-coverage" data-node-id="${this._esc(edge.target)}">View target coverage in IGV</button>`;
         }
@@ -211,8 +222,10 @@ const DetailPanel = {
             btn.addEventListener('click', () => {
                 const action = btn.dataset.action;
                 const nid = btn.dataset.nodeId;
+                const eid = btn.dataset.edgeId;
                 if (action === 'igv-node' && typeof onIgvNodeView === 'function') onIgvNodeView(nid);
                 if (action === 'igv-node-coverage' && typeof onIgvNodeCoverageView === 'function') onIgvNodeCoverageView(nid);
+                if (action === 'igv-rollback-edge' && typeof onIgvRollbackEdgeView === 'function') onIgvRollbackEdgeView(eid);
                 if (action === 'highlight-node' && typeof onHighlightNode === 'function') onHighlightNode(nid);
             });
         });
