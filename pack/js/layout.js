@@ -14,9 +14,58 @@ const TreeLayout = {
      * @param {Object} data      - enriched tree data (with _nodeById)
      */
     layout(rootNode, data) {
+        this._sortChildrenByPathLength(rootNode, data);
         const counter = { count: 0 };
         this._layoutRecursive(rootNode, data, counter);
         return counter.count; // total leaf count
+    },
+
+    _sortChildrenByPathLength(rootNode, data) {
+        const memo = new Map();
+        const score = (node) => {
+            if (!node || !node.id) return 0;
+            if (memo.has(node.id)) return memo.get(node.id);
+
+            const interval = data._roundNodeIntervalById ? data._roundNodeIntervalById.get(node.id) : null;
+            let best = 0;
+            if (interval && Array.isArray(interval.per_final_path)) {
+                for (const fp of interval.per_final_path) {
+                    const len = Number(fp.final_ref_len || 0);
+                    if (Number.isFinite(len) && len > best) best = len;
+                }
+            }
+
+            if (node.children && node.children.length > 0) {
+                for (const child of node.children) {
+                    const childScore = score(child);
+                    if (childScore > best) best = childScore;
+                }
+            }
+
+            const nd = data._nodeById ? data._nodeById.get(node.id) : null;
+            const ownLen = Number((interval && interval.node_ref_len) || (nd && nd.ref_len) || 0);
+            if (Number.isFinite(ownLen) && ownLen > best) best = ownLen;
+
+            memo.set(node.id, best);
+            node._pathLengthSortScore = best;
+            return best;
+        };
+
+        const walk = (node) => {
+            if (!node || !node.children || node.children.length === 0) return;
+            node.children.sort((a, b) => {
+                const diff = score(b) - score(a);
+                if (diff !== 0) return diff;
+                const ar = Number((data._nodeById && data._nodeById.get(a.id) || {}).round || 0);
+                const br = Number((data._nodeById && data._nodeById.get(b.id) || {}).round || 0);
+                if (ar !== br) return ar - br;
+                return String(a.id).localeCompare(String(b.id));
+            });
+            node.children.forEach(walk);
+        };
+
+        score(rootNode);
+        walk(rootNode);
     },
 
     _layoutRecursive(node, data, counter) {

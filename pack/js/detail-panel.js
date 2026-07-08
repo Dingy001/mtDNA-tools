@@ -49,6 +49,15 @@ const DetailPanel = {
         if (typeof onDetailOpen === 'function') onDetailOpen({ type: 'edge', id: edgeId, data: edge });
     },
 
+    showPath(pathId) {
+        const pathData = (this._data.final_paths_igv || []).find(item => item.final_path === pathId);
+        if (!pathData) return;
+        this._state.selectedNodeId = null;
+        this._state.selectedEdgeId = null;
+        this._renderPathDetail(pathData);
+        this._open();
+    },
+
     close() {
         this._panel.classList.remove('open');
         if (this._overlay) this._overlay.classList.remove('visible');
@@ -167,6 +176,108 @@ const DetailPanel = {
         });
     },
 
+    _renderPathDetail(pathData) {
+        const titleEl = this._panel.querySelector('#detail-title');
+        const contentEl = this._panel.querySelector('#detail-content');
+        if (titleEl) titleEl.textContent = 'Path Detail: ' + pathData.final_path;
+
+        const finalPathFile = this._data._finalPathFileById ? this._data._finalPathFileById.get(pathData.final_path) : null;
+        const rounds = Array.isArray(pathData.rounds) ? pathData.rounds : [];
+        const expandedNodeIds = this._pathNodeIds(pathData);
+        const finalLen = this._pathFinalRefLen(pathData.final_path, expandedNodeIds, finalPathFile);
+
+        let html = `<div class="detail-section">
+            <div class="detail-section-title">Summary</div>
+            <table class="kv-table">
+            <tr><td class="kv-key">Path</td><td class="kv-val">${this._esc(pathData.final_path)}</td></tr>
+            <tr><td class="kv-key">Status</td><td class="kv-val">${this._esc(pathData.status || '-')}</td></tr>
+            <tr><td class="kv-key">Rounds</td><td class="kv-val">${this._fmtNum(rounds.length || pathData.num_rounds || 0)}</td></tr>
+            <tr><td class="kv-key">Tree Nodes</td><td class="kv-val">${this._fmtNum(expandedNodeIds.length)}</td></tr>
+            <tr><td class="kv-key">Final Ref Length</td><td class="kv-val">${this._fmtNum(finalLen)} bp</td></tr>
+            </table></div>`;
+
+        html += `<div class="detail-section">
+            <div class="detail-section-title">Round Details</div>
+            <div class="table-wrap"><table class="data-table">
+            <thead><tr>
+                <th>Round</th><th>Node</th><th>Final Ref Interval</th><th>Added Len</th><th>Reads</th><th>Ref Read</th>
+            </tr></thead><tbody>`;
+
+        for (const item of rounds) {
+            const node = this._data._nodeById ? this._data._nodeById.get(item.node_id) : null;
+            const interval = this._data._roundNodeIntervalById ? this._data._roundNodeIntervalById.get(item.node_id) : null;
+            html += `<tr>
+                <td>${this._esc(item.round ?? (node ? node.round : '-'))}</td>
+                <td>${this._esc((node && node.label) || item.node_id || '-')}</td>
+                <td>${this._esc(this._intervalLabel(interval))}</td>
+                <td>${this._fmtNum(interval ? interval.added_len : '')}</td>
+                <td>${this._esc(this._readsLabel(node))}</td>
+                <td>${this._esc(this._refReadLabel(node))}</td>
+            </tr>`;
+        }
+        html += `</tbody></table></div></div>`;
+
+        html += `<div class="detail-section">
+            <div class="detail-section-title">IGV Actions</div>
+            <div class="btn-group">
+            <button class="btn btn-igv" data-action="igv-path" data-path-id="${this._esc(pathData.final_path)}">View path in IGV</button>
+            </div></div>`;
+
+        if (contentEl) contentEl.innerHTML = html;
+
+        this._panel.querySelectorAll('.btn-igv').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const action = btn.dataset.action;
+                const pid = btn.dataset.pathId;
+                if (action === 'igv-path' && typeof onIgvPathView === 'function') onIgvPathView(pid);
+            });
+        });
+    },
+
+    _pathNodeIds(pathData) {
+        const mapping = Array.isArray(this._data.final_path_node_mappings)
+            ? this._data.final_path_node_mappings.find(item => item.final_path === pathData.final_path)
+            : null;
+        if (mapping && Array.isArray(mapping.node_ids)) return mapping.node_ids.filter(Boolean);
+        if (this._data._finalPathNodeIdsById && this._data._finalPathNodeIdsById.has(pathData.final_path)) {
+            return this._data._finalPathNodeIdsById.get(pathData.final_path) || [];
+        }
+        return (pathData.rounds || []).map(item => item.node_id).filter(Boolean);
+    },
+
+    _pathFinalRefLen(pathId, nodeIds, finalPathFile) {
+        for (const nodeId of nodeIds || []) {
+            const interval = this._data._roundNodeIntervalById ? this._data._roundNodeIntervalById.get(nodeId) : null;
+            const per = interval && Array.isArray(interval.per_final_path) ? interval.per_final_path : [];
+            const hit = per.find(item => item.final_path === pathId);
+            if (hit && hit.final_ref_len) return hit.final_ref_len;
+        }
+        return finalPathFile && finalPathFile.final_ref_len ? finalPathFile.final_ref_len : '';
+    },
+
+    _intervalLabel(interval) {
+        if (!interval || !interval.final_ref_start_1based || !interval.final_ref_end_1based) return '-';
+        return `${this._fmtNum(interval.final_ref_start_1based)}-${this._fmtNum(interval.final_ref_end_1based)}`;
+    },
+
+    _readsLabel(node) {
+        if (!node) return '-';
+        const parts = [];
+        const add = (label, value) => {
+            if (value !== undefined && value !== null && value !== '' && value !== 'NA') parts.push(label + ': ' + value);
+        };
+        add('support', node.support_read_count);
+        add('strict', node.base_strict_reads);
+        add('no_clip', node.final_no_clip_reads);
+        add('clip', node.final_clip_reads);
+        return parts.length ? parts.join('; ') : '-';
+    },
+
+    _refReadLabel(node) {
+        if (!node) return '-';
+        const value = node.ref_read_name || node.split_rep_read || '';
+        return value && value !== 'NA' ? value : '-';
+    },
     _renderEdgeDetail(edge, einfo) {
         const titleEl = this._panel.querySelector('#detail-title');
         const contentEl = this._panel.querySelector('#detail-content');
